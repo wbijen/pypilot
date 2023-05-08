@@ -211,6 +211,8 @@ class ServerValues(pypilotValue):
         self.load()
         self.pqwatches = [] # priority queue of watches
         self.last_send_watches = 0
+        self.handlers = []
+
 
     def get_msg(self):
         if not self.msg or self.msg == 'new':
@@ -307,11 +309,15 @@ class ServerValues(pypilotValue):
     def HandleRequest(self, msg, connection):
         if msg == '\n':
             return # silently ignore empty line used to poll connection if no data
+        if (self.handlers.count > 0):
+            for handler in self.handlers:
+                handler(msg, connection)
         name, data = msg.split('=', 1)
         if not name in self.values:
             connection.write('error=invalid unknown value: ' + name + '\n')
             return
         self.values[name].set(msg, connection)
+
 
     def load_file(self, f):
         line = f.readline()
