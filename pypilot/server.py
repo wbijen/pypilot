@@ -420,11 +420,11 @@ class ServerValues(pypilotValue):
             return # silently ignore empty line used to poll connection if no data
         #if there are handlers, call them
         # only print if the msg contains rudder
-        if msg.find('rudder') != -1:
+        if msg.find('rudder_command') != -1:
             print('handle msg', msg)
 
         name, data = msg.split('=', 1)
-        if msg.find('rudder') != -1:
+        if msg.find('rudder_command') != -1:
             print('handle request ' + name + ' ' + data)
         if not name in self.values:
             connection.write('error=invalid unknown value: ' + name + '\n')
