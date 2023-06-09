@@ -17,7 +17,8 @@ from pilot import AutopilotPilot
 class TrainPilot(AutopilotPilot):
   def __init__(self, ap):
     super(TrainPilot, self).__init__('train', ap)
-
+    self.gains = {}
+    self.Gain('G', 1, 0.25, 2)
     self.active_client = None
 
   def handleWsCommand(self, msg, connection):
