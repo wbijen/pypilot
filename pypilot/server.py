@@ -423,6 +423,7 @@ class ServerValues(pypilotValue):
 
         name, data = msg.split('=', 1)
         if not name in self.values:
+            print('unknown value' + name)
             connection.write('error=invalid unknown value: ' + name + '\n')
             return
 
