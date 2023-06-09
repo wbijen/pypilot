@@ -20,29 +20,20 @@ class TrainPilot(AutopilotPilot):
     self.ap = ap
     self.gains = {}
     self.Gain('G', 1, 0.25, 2)
-    self.active_client = None
-
-  def handleWsCommand(self, msg, connection):
-    #if the message contains ai
-    if 'ai.' in msg:
-      #get the value
-      value = msg.split('=')[1]
-      print('msg: ' + value)
-      print(self.ap)
-      if self.ap.enabled.value:
-        #set the value
-        self.rudder_command = float(value)
-      #set the active client to connection id
-      self.active_client = connection
+    self.Gain('RS', 0.15, 0, 0.03)
 
 
   def process(self):
     ap = self.ap
+    print(ap.sensors)
+    print(ap.boatimu)
+    print(ap.servo)
     #if connection is no longer active set ap.enabled to false
     #  self.active_client = None
-    print("rudder_command "+ str(ap.rudder_command.value))
     #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
     if ap.enabled.value and ap.rudder_command.value is not None:
-        ap.servo.position_command.command(ap.rudder_command.value)
+        # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle range
+        if abs(ap.sensors.rudder.angle.value - ap.rudder_command.value) > self.gains['RS'].value * ap.rudder_angle_range.value:
+          ap.servo.position_command.command(ap.rudder_command.value * self.gains['G'].value)
 
 pilot = TrainPilot
