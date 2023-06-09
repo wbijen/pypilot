@@ -22,7 +22,7 @@ class TrainPilot(AutopilotPilot):
     self.active_client = None
     self.rudder_command = None
     #add handler
-    ap.server.values.add_handler(self.handleWsCommand, 'train')
+    self.ap.server.values.add_handler(self.handleWsCommand, 'train')
 
   def handleWsCommand(self, msg, connection):
     #if the message contains ai
