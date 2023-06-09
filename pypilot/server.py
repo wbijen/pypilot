@@ -308,7 +308,7 @@ class ServerValues(pypilotValue):
         super(ServerValues, self).__init__(self, 'values')
         profile = ServerProfile(self)
         profiles = ServerProfiles(self)
-        
+        self.handlers = {}
         self.persistent_values = {'profile': profile, 'profiles': profiles}
         self.values = {'values': self, 'watch': ServerWatch(self), 'udp_port': ServerUDP(self, server)}
         self.values.update(self.persistent_values)
@@ -419,7 +419,7 @@ class ServerValues(pypilotValue):
         if msg == '\n':
             return # silently ignore empty line used to poll connection if no data
         #if there are handlers, call them
-        for handler in self.handlers:
+        for handler in self.handlers.values():
             handler(msg, connection)
         name, data = msg.split('=', 1)
         if not name in self.values:
@@ -427,6 +427,9 @@ class ServerValues(pypilotValue):
             return
 
         self.values[name].set(msg, connection)
+
+    def add_handler(self, handler, name):
+        self.handlers[name] = handler
 
     def load_file(self, filename):
         profile = None
