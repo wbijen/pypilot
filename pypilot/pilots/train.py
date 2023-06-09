@@ -25,6 +25,7 @@ class TrainPilot(AutopilotPilot):
 
   def process(self):
     ap = self.ap
+    print(self.gains)
     print(ap.sensors)
     print(ap.boatimu)
     print(ap.servo)
@@ -33,7 +34,7 @@ class TrainPilot(AutopilotPilot):
     #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
     if ap.enabled.value and ap.rudder_command.value is not None:
         # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle range
-        if abs(ap.sensors.rudder.angle.value - ap.rudder_command.value) > self.gains['RS'].value * ap.rudder_angle_range.value:
-          ap.servo.position_command.command(ap.rudder_command.value * self.gains['G'].value)
+        if abs(ap.sensors.rudder.angle.value - ap.rudder_command.value) > 0.03 * ap.rudder_angle_range.value:
+          ap.servo.position_command.command(ap.rudder_command.value)
 
 pilot = TrainPilot
