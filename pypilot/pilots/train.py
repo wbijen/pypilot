@@ -20,7 +20,7 @@ class TrainPilot(AutopilotPilot):
     self.ap = ap
     self.gains = {}
     self.Gain('G', 1, 0.25, 2)
-    self.Gain('RS', 0.15, 0, 0.03)
+    #self.Gain('RS', 0.15, 0, 0.03)
 
 
   def process(self):
