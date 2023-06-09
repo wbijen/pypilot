@@ -42,7 +42,7 @@ class TrainPilot(AutopilotPilot):
     #  self.active_client = None
     print(ap.heading_error.value)
     print('rudder_angle' + str(ap.sensors.rudder.angle.value))
-    if ap.enabled.value and ap.rudder_command is not None:
-        ap.servo.position_command.command(ap.rudder_command)
+    if ap.enabled.value and ap.rudder_command.value is not None:
+        ap.servo.position_command.command(ap.rudder_command.value)
 
 pilot = TrainPilot
