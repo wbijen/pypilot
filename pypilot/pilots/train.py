@@ -25,10 +25,6 @@ class TrainPilot(AutopilotPilot):
 
   def process(self):
     ap = self.ap
-
-    print(ap.sensors)
-    print(ap.boatimu)
-
     #if connection is no longer active set ap.enabled to false
     #  self.active_client = None
     #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
