@@ -17,10 +17,10 @@ from pilot import AutopilotPilot
 class TrainPilot(AutopilotPilot):
   def __init__(self, ap):
     super(TrainPilot, self).__init__('train', ap)
+    self.ap = ap
     self.gains = {}
     self.Gain('G', 1, 0.25, 2)
     self.active_client = None
-    self.rudder_command = None
 
   def handleWsCommand(self, msg, connection):
     #if the message contains ai
@@ -40,9 +40,9 @@ class TrainPilot(AutopilotPilot):
     ap = self.ap
     #if connection is no longer active set ap.enabled to false
     #  self.active_client = None
-    print(self.rudder_command)
+    print(ap.heading_error.value)
     print('rudder_angle' + str(ap.sensors.rudder.angle.value))
-    if ap.enabled.value and self.rudder_command is not None:
-        ap.servo.position_command.command(self.rudder_command)
+    if ap.enabled.value and ap.rudder_command is not None:
+        ap.servo.position_command.command(ap.rudder_command)
 
 pilot = TrainPilot

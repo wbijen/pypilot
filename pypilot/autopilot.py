@@ -109,6 +109,8 @@ class Autopilot(object):
         self.dt = 0
         
         self.heading_command = self.register(HeadingProperty, 'heading_command', self.mode)
+        self.rudder_command = self.register(RangeProperty, 'rudder_command', 0, -1, 1)
+        self.throttle_command = self.register(RangeProperty, 'throttle_command', 0, -1, 1)
         self.enabled = self.register(BooleanProperty, 'enabled', False)
         self.lastenabled = False
         
