@@ -1,17 +1,23 @@
 #!/bin/bash
 
-# Stop pypilot service
-sudo systemctl stop pypilot.service
-
-# Perform git fetch and pull
+# Perform git fetch and check for changes
 git fetch
-git pull
 
-# Install the project
-sudo python3 setup.py install
+if [ -z "$(git diff origin/main)" ]; then
+    echo "Nothing to update"
+else
+    # Stop pypilot service
+    sudo systemctl stop pypilot.service
 
-# Start pypilot service
-sudo systemctl start pypilot.service
+    # If changes are found, pull them
+    git pull
+    
+    # Install the project
+    sudo python3 setup.py install
 
-# Watch the log
-journalctl -u pypilot.service -f
+    # Start pypilot service
+    sudo systemctl start pypilot.service
+
+    # Watch the log
+    journalctl -u pypilot.service -f
+fi
