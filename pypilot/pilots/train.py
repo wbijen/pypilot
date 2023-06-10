@@ -19,22 +19,21 @@ class TrainPilot(AutopilotPilot):
     super(TrainPilot, self).__init__('train', ap)
     self.ap = ap
     self.gains = {}
-    self.Gain('G', 1, 0.25, 2)
+    self.Gain('G', 40, 20, 45)
     #self.Gain('RS', 0.15, 0, 0.03)
 
 
   def process(self):
     ap = self.ap
-    gain_values = {'G': 5}
+    gain_values = {'G': ap.rudder_command.value}
     command = self.Compute(gain_values)
-    print('command ' + str(command))
 
     #if connection is no longer active set ap.enabled to false
     #  self.active_client = None
     #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
-    if ap.enabled.value and ap.rudder_command.value is not None:
+    if ap.enabled.value and command is not None:
         # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle
-        if abs(ap.sensors.rudder.angle.value - ap.rudder_command.value) > 0.03 * ap.sensors.rudder.angle.value:
-          ap.servo.position_command.command(ap.rudder_command.value)
+        if abs(ap.sensors.rudder.angle.value - command) > 0.03 * ap.sensors.rudder.angle.value:
+          ap.servo.position_command.command(command)
 
 pilot = TrainPilot
