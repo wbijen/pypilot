@@ -27,7 +27,7 @@ class TrainPilot(AutopilotPilot):
     ap = self.ap
     #print gains
     for name in self.gains:
-      print(name + str(self.gains[name].value))
+      print(name + str(self.gains[name]))
 
     #if connection is no longer active set ap.enabled to false
     #  self.active_client = None
