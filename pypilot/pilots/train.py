@@ -25,9 +25,9 @@ class TrainPilot(AutopilotPilot):
 
   def process(self):
     ap = self.ap
-    #print gains
-    for name in self.gains:
-      print(name + str(self.gains[name]))
+    gain_values = {'G': 5}
+    command = self.Compute(gain_values)
+    print('command ' + str(command))
 
     #if connection is no longer active set ap.enabled to false
     #  self.active_client = None
