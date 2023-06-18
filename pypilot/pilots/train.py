@@ -20,6 +20,7 @@ class TrainPilot(AutopilotPilot):
     self.ap = ap
     self.gains = {}
     self.Gain('G', 40, 20, 45)
+    self.last_command = 0
     #self.Gain('RS', 0.15, 0, 0.03)
 
 
@@ -32,8 +33,11 @@ class TrainPilot(AutopilotPilot):
     #  self.active_client = None
     #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
     if ap.enabled.value and command is not None:
-        # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle
-        if abs(ap.sensors.rudder.angle.value - command) > 0.03 * ap.sensors.rudder.angle.value:
-          ap.servo.position_command.command(command)
+      if ap.sensors.rudder.angle.value is not None:
+        if self.last_command != command:
+          # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle
+          if abs(ap.sensors.rudder.angle.value - command) > 2:
+            ap.servo.position_command.command(command)
+            self.last_command = command
 
 pilot = TrainPilot
