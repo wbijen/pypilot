@@ -118,10 +118,11 @@ class ResettableValue(Property):
     def __init__(self, name, initial, **kwargs):
         self.initial = initial
         super(ResettableValue, self).__init__(name, initial, **kwargs)
+        self.info['type'] = 'ResettableValue'
 
-    def type(self):
-        return {'type': 'ResettableValue'}
-
+    def get_msg(self):
+        return round_value(self.value, '%.2f')
+        
     def set(self, value):
         if not value:
             value = self.initial # override value

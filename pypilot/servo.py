@@ -279,6 +279,7 @@ class Servo(object):
         self.compensate_current = self.register(BooleanProperty, 'compensate_current', False, persistent=True)
         self.compensate_voltage = self.register(BooleanProperty, 'compensate_voltage', False, persistent=True)
         self.amphours = self.register(ResettableValue, 'amp_hours', 0, persistent=True)
+
         self.watts = self.register(SensorValue, 'watts')
 
         self.speed = self.register(SensorValue, 'speed')
@@ -514,7 +515,9 @@ class Servo(object):
                 self.send_driver_params()
                 self.driver.disengage()
             else:
-                #print('servo write', command, time.monotonic())
+                #if command:
+                 #   print('servo write', command,time.time()-1681305360)
+
                 self.driver.command(command)
 
                 mul = 1

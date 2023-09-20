@@ -541,7 +541,7 @@ def FitCompass(debug, compass_points, compass_calibration, norm):
 
     # make sure the magnitude is sane
     mag = c[0][3]
-    if mag < 7 or mag > 120:
+    if mag < 12 or mag > 120:
         debug('fit found field outside of normal earth field strength', mag)
         return
 
@@ -608,7 +608,7 @@ class AgeValue(StringValue):
         t = time.monotonic()
         if self.value:
             return '"' + boatimu.readable_timespan(t - self.value) + '"'
-        return 'N/A'
+        return '"N/A"'
 
 def RegisterCalibration(client, name, default):
     calibration = client.register(CalibrationProperty(name, default))
@@ -645,6 +645,7 @@ def CalibrationProcess(cal_pipe, client):
                 except Exception as e:
                     pass
                 s += str(a) + ' '
+                #print("debug", name, s)
             client.set('imu.'+name+'.calibration.log', s)
         return debug_by_name
 
@@ -713,7 +714,6 @@ def CalibrationProcess(cal_pipe, client):
                 value = vector.sub(sensor, cal[0][:3])
                 g = vector.norm(value)
                 # check that calibration points are near magnitude of 1
-                print("warning update", g)
                 warnings_update('accel', 'warning', abs(g-1) > .1)
 
             if compass_points.last_sample:
@@ -747,6 +747,8 @@ def CalibrationProcess(cal_pipe, client):
                     warn = True
 
                 warnings_update('compass', 'distortions', warn)
+                #if warn:
+                #print('mag distortions debug', field_strength, gauss, inclination, angle)
 
 
             cals = [(accel_calibration, accel_points), (compass_calibration, compass_points)]
