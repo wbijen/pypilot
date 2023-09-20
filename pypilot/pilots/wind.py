@@ -26,8 +26,6 @@ class WindPilot(AutopilotPilot):
     self.last_wind_speed = 0
     
     # create simple pid filter
-    self.gains = {}
-        
     self.PosGain('P', .003, .02) # position (heading error)
     self.PosGain('I', 0, .1)     # integral
     self.PosGain('D', .1, 1.0)   # derivative (gyro)
@@ -66,8 +64,7 @@ class WindPilot(AutopilotPilot):
       else:
           boat_speed = 0
         
-      true_wind = autopilot.compute_true_wind(boat_speed,
-                                              sensors.wind.speed, wind)
+      true_wind = TrueWind.compute_true_wind_direction(boat_speed, sensors.wind.speed, wind)
       ap.heading.set(true_wind)
 
     elif mode == 'wind':

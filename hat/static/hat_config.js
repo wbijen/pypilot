@@ -18,6 +18,7 @@ $(document).ready(function() {
     // Event handler for new connections.
     socket.on('connect', function(msg) {
         $('#connection').text('connected')
+        show_adc_channels();
     });
 
     socket.on('disconnect', function() {
@@ -51,7 +52,6 @@ $(document).ready(function() {
         n = n.replace('+', 'plus')
         $('#action'+n+'keys').text(keys['keys'])
     });
-
 
     function program_button(event) {
         if($('#action0').text().length == 0) {
@@ -89,6 +89,30 @@ $(document).ready(function() {
     $('#default').click(function(event) {
         socket.emit('keys', 'default');
     });
+
+    function show_adc_channels() {
+        count = parseInt($('#adc_channels').val());
+        for (var i = 0; i<3; i++)
+            if(i < count)
+                $('#adc_channel_'+i).show();
+            else
+                $('#adc_channel_'+i).hide();
+    }        
+
+    $('#adc_channels').change(function(event) {
+        show_adc_channels();
+        send_adc_channels(event);
+    });
+    for (var i = 0; i<3; i++)
+        $('#adc_channel_' + i + '_select').change(send_adc_channels);
+    
+    function send_adc_channels(event) {
+        adc_channels = []
+        count = parseInt($('#adc_channels').val());
+        for (var i = 0; i<count; i++)
+            adc_channels.push($('#adc_channels_'+i+'_select').val());
+        socket.emit('config', {'arduino.adc_channels': adc_channels});
+    }        
 
     function config_ir() {
         socket.emit('config', {'pi.ir': document.getElementById('pi_ir').checked});

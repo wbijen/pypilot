@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#   Copyright (C) 2021 Sean D'Epagnier
+#   Copyright (C) 2023 Sean D'Epagnier
 #
 # This Program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public
@@ -9,7 +9,7 @@
 
 # autopilot base handles reading from the imu (boatimu)
 
-import sys, os, math, time
+import sys, os, math, time, socket
 print('autopilot start', time.monotonic())
 
 pypilot_dir = os.getenv('HOME') + '/.pypilot/'
@@ -35,13 +35,11 @@ class ModeProperty(EnumProperty):
 
     def set(self, value):
         # update the preferred mode when the mode changes from user
-        self.ap.preferred_heading_command = None
         self.ap.preferred_mode.update(value)
-        print('ap mode set', value)
+        self.ap.preferred_mode.command = None
         super(ModeProperty, self).set(value)
 
     def set_internal(self, value):
-        print('ap mode set_internal', value)
         super(ModeProperty, self).set(value)
 
 class HeadingOffset(object):
@@ -59,8 +57,11 @@ class HeadingProperty(RangeProperty):
 
     # +-180 for wind modes 0-360 for compass and gps modes
     def set(self, value):
-        value = resolv(value, 0 if 'wind' in self.mode.value else 180)
-        super(HeadingProperty, self).set(value)
+        try:
+            value = resolv(float(value), 0 if 'wind' in self.mode.value else 180)
+            super(HeadingProperty, self).set(value)
+        except Exception as e:
+            pass # ignore for now
 
 class TimeStamp(SensorValue):
     def __init__(self):
@@ -91,7 +92,7 @@ class Autopilot(object):
         self.watchdog_device = False
 
         self.server = pypilotServer()
-        self.client = pypilotClient(self.server)
+        self.client = pypilotClient(self.server, use_udp=True)
         self.boatimu = BoatIMU(self.client)
         self.sensors = Sensors(self.client, self.boatimu)
         self.servo = servo.Servo(self.client, self.sensors)
@@ -99,14 +100,14 @@ class Autopilot(object):
         self.timestamp = self.client.register(TimeStamp())
         self.starttime = time.monotonic()
         self.preferred_mode = self.register(Value, 'preferred_mode', 'compass')
-        self.preferred_heading_command = None
+        self.preferred_mode.command = None
+
         self.mode = self.register(ModeProperty, 'mode', self)
         self.modes = self.register(JSONValue, 'modes', [])
         self.modes.sensors = {}
         self.gps_and_nav_modes = self.register(BooleanProperty, 'gps_and_nav_modes', True, persistent=True)
 
         self.lastmode = False    
-        self.dt = 0
         
         self.heading_command = self.register(HeadingProperty, 'heading_command', self.mode)
         self.rudder_command = self.register(RangeProperty, 'rudder_command', 0, -1, 1)
@@ -151,7 +152,7 @@ class Autopilot(object):
         self.runtime = self.register(TimeValue, 'runtime') #, persistent=True)
         self.timings = self.register(SensorValue, 'timings', False)
         self.last_heading_mode = False
-
+            
         device = '/dev/watchdog0'
         try:
             self.watchdog_device = open(device, 'w')
@@ -227,7 +228,8 @@ class Autopilot(object):
         if self.mode.value != newmode:
             # remember the command on the preferred mode so it can be restored
             if self.mode.value == self.preferred_mode.value:
-                self.preferred_heading_command = self.heading_command.value
+                self.preferred_mode.command = self.heading_command.value
+                self.preferred_mode.time = time.monotonic()
             self.mode.set_internal(newmode)
 
     def compute_offsets(self):
@@ -301,13 +303,14 @@ class Autopilot(object):
         # keep same heading if mode changes
         if self.mode.value != self.lastmode:
             if self.mode.value == self.preferred_mode.value and \
-               self.preferred_heading_command is not None:
-                self.heading_command.set(self.preferred_heading_command)
+               self.preferred_mode.command is not None and t-self.preferred_mode.time < 30:
+                self.heading_command.set(self.preferred_mode.command)
             else:
                 error = self.heading_error.value
                 if windmode:
                     error = -error # wind error is reversed
                 self.heading_command.set(heading - error)
+
             self.lastmode = self.mode.value
       
         # compute heading error
@@ -327,14 +330,19 @@ class Autopilot(object):
         self.heading_error_int_time = t
         # int error +- 1, from 0 to 1500 deg/s
         self.heading_error_int.set(minmax(self.heading_error_int.value + \
-                                          (self.heading_error.value/1500)*dt, 1))
+                                          (self.heading_error.value/1500)*dt, 5))
 
     def iteration(self):
         data = False
         t0 = time.monotonic()
 
         self.server.poll() # needed if not multiprocessed
-        msgs = self.client.receive(self.dt)
+
+        # do waiting in client if not enabled to reduce lag
+        period = 1/self.boatimu.rate.value
+        rdt = 0 if self.enabled.value else period# dt*.8
+
+        msgs = self.client.receive(rdt)
         for msg in msgs: # we aren't usually subscribed to anything
             print('autopilot main process received:', msg, msgs[msg])
 
@@ -345,8 +353,7 @@ class Autopilot(object):
             self.servo.poll()
 
         t1 = time.monotonic()
-        period = 1/self.boatimu.rate.value
-        if t1 - t0 > period/2 + self.dt:
+        if t1 - t0 > period/2 + rdt:
             print(_('server/client is running too _slowly_'), t1-t0)
 
         self.sensors.poll()
@@ -358,6 +365,7 @@ class Autopilot(object):
         sp = 0
         for tries in range(14): # try 14 times to read from imu
             timu = time.monotonic()
+            t2 = time.monotonic()
             data = self.boatimu.read()
             if data:
                 break
@@ -413,13 +421,17 @@ class Autopilot(object):
         if self.enabled.value != self.lastenabled:
             self.lastenabled = self.enabled.value
             if self.enabled.value:
-                self.heading_error_int.set(0) # reset integral
+                # reset feed-forward gain and integral gains
                 self.heading_command_rate.set(0)
-                # reset feed-forward gain
                 self.last_heading_mode = False
 
+        newmode = self.last_heading_mode != self.mode.value
+        self.last_heading_mode = self.mode.value
+        if newmode:
+            self.heading_error_int.set(0) # reset integral
+                
         # reset feed-forward error if mode changed, or last command is older than 1 second
-        if self.last_heading_mode != self.mode.value or t0 - self.heading_command_rate.time > 1:
+        if newmode or t0 - self.heading_command_rate.time > 1:
             self.last_heading_command = self.heading_command.value
 
         # filter the heading command to compute feed-forward gain
@@ -432,9 +444,7 @@ class Autopilot(object):
         lp = .1
         command_rate = (1-lp)*self.heading_command_rate.value + lp*heading_command_diff
         self.heading_command_rate.update(command_rate)
-            
-        self.last_heading_mode = self.mode.value
-                
+                            
         # perform tacking or pilot specific calculation
         if not self.tack.process():
             # if disabled, only compute if a client cares
@@ -458,10 +468,19 @@ class Autopilot(object):
         if self.enabled.value:
             self.servo.poll()
 
-        self.sensors.gps.predict(self) # make gps position/velocity prediction
-                                       # from inertial sensors
-        self.sensors.water.compute(self) # calculate leeway and currents
+        if self.starttime > 30:
+            # make gps position/velocity prediction from inertial sensors            
+            self.sensors.gps.predict(self)
+            self.sensors.water.compute(self) # calculate leeway and currents
+
         self.boatimu.poll() # after critical loop is done
+        self.tack.poll()
+
+        if heading_command_diff:
+            # decay integral with heading command changes
+            e = self.heading_error_int.value
+            sign = 1 if e > 0 else -1
+            self.heading_error_int.set(sign*(abs(e)-heading_command_diff/3))
 
         t5 = time.monotonic()
         if t5-t4 > period/2 and self.servo.driver:
@@ -474,17 +493,18 @@ class Autopilot(object):
         #    self.watchdog_device.write('c')
 
         t6 = time.monotonic()
-        if t6-t0 > period and t0-self.starttime > 5:
+        if t6-t0 > period and t0-self.starttime > 5 and self.enabled.value:
             print(_('autopilot iteration running too slow'), t6-t0)
 
-        while True: # sleep remainder of period
+        while self.enabled.value:  # sleep remainder of period
             dt = period - (time.monotonic() - t0) + sp
             if dt >= period or dt <= 0:
                 break
 
             time.sleep(dt)
-            # do waiting in client if not enabled to reduce lag
-            self.dt = 0 if self.enabled.value else dt*.8
+
+
+        #print("times", t1-t0, t2-t1, t3-t2, t4-t3, t5-t4, t6-t5)
 
 def main():
     if os.geteuid() == 0:

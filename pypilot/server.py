@@ -486,7 +486,6 @@ class ServerValues(pypilotValue):
         except Exception as e:
             self.inotify = None
             print(_('failed to monitor '), configfilepath, e)
-        self.load_file(configfilepath + configfilename)
         try:
             if not os.path.exists(configfilepath):
                 print(_('creating config directory: ') + configfilepath)
@@ -520,18 +519,25 @@ class ServerValues(pypilotValue):
         self.inotify_time = t0
         loaded = False
         for event in self.inotify.event_gen(timeout_s=0):
-            #try:
-            if True:
+            try:
                 if event[1][0] == 'IN_CLOSE_WRITE':
                     if not loaded:
+                        print('detected configuration file updated: reloading', configfilename)
                         self.load_file(configfilepath + configfilename)
                         loaded = True
-            #except Exception as e:
-             #   print('pypilot server failed to detect or load config change', e)
+            except Exception as e:
+                print('pypilot server failed to detect or load config change', e)
                 #print('pypilot server will now overwrite config file')
                 #self.store_file(configfilepath + configfilename)
 
     def store_file(self, filename):
+        if self.inotify:
+            try:
+                self.inotify.remove_watch(configfilepath + configfilename)
+            except Exception as e:
+                print("failed to remove watch", e)
+                
+        print("store_file", filename, '%.3f'%time.monotonic())
         file = open(filename, 'w')
         for name, value in self.persistent_data[None].items():
             file.write(value)
@@ -544,6 +550,9 @@ class ServerValues(pypilotValue):
                 if value:
                     file.write(value)
         file.close()
+
+        if self.inotify:
+            self.inotify.add_watch(configfilepath + configfilename)
 
     def store(self):
         self.persistent_timeout = time.monotonic() + server_persistent_period
@@ -561,12 +570,13 @@ class ServerValues(pypilotValue):
             data = self.persistent_data[profile]
             msg = value.get_msg()
             if msg and (not name in data or msg != data[name]):
+                #print("need store, changed", name, data[name].rstrip(), msg.rstrip())
                 data[name] = msg
                 self.need_store = True
 
         if self.need_store:
-            self.store_file(configfilepath + configfilename)
             try:
+                self.store_file(configfilepath + configfilename)
                 self.need_store = False
             except Exception as e:
                 print(_('failed to write'), configfilename, e)
@@ -596,10 +606,11 @@ class pypilotServer(object):
             t0 = time.monotonic()
             self.poll(dt)
             pt = time.monotonic() - t0
-            #print('times', pt, dt)
+            #print('server times', pt, dt)
             st = .04 - pt
             if st > 0:
-                time.sleep(st)
+                #time.sleep(st)
+                pass
 
     def init_process(self):
         if self.multiprocessing:
@@ -692,11 +703,17 @@ class pypilotServer(object):
 
         # if config file is edited externally
         self.values.poll_config(t0)
-        #if timeout:
-        #timeout *= 1000 # milliseconds
+        if not timeout:
+            timeout = 400
+        else:
+            timeout *= 1000 # milliseconds
 
-        timeout = .1
+        # sleep between 50 and 400 milliseconds
+        timeout = max(min(int(timeout), 400), 50)
+
+        #timeout = 10
         events = self.poller.poll(timeout)
+
         while events:
             event = events.pop()
             fd, flag = event
