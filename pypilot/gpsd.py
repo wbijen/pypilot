@@ -181,7 +181,7 @@ class gpsProcess(multiprocessing.Process):
                 self.disconnect()
                 pipe.send({'devices': self.devices})                    
 
-class gpsd(object):
+class gpsd_client(object):
     def __init__(self, sensors):
         self.sensors = sensors
         self.devices = False # list of devices used by gpsd, or False if not connected
