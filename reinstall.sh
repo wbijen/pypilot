@@ -3,7 +3,7 @@
 # Perform git fetch and check for changes
 git fetch
 
-if [ -z "$(git diff origin/unstable)" ]; then
+if [ -z "$(git diff origin/master)" ]; then
     echo "Nothing to update"
 else
     # Stop pypilot service
