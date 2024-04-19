@@ -14,29 +14,30 @@ from pilot import AutopilotPilot
 # 
 # This pilot requires rudder feedback
 #
-class Trainilot(AutopilotPilot):
+class TrainPilot(AutopilotPilot):
   def __init__(self, ap):
-    super(Trainilot, self).__init__('train', ap)
+    super(TrainPilot, self).__init__('train', ap)
+    self.ap = ap
+    self.gains = {}
+    self.Gain('G', 40, 20, 45)
+    self.last_command = 0
+    #self.Gain('RS', 0.15, 0, 0.03)
 
-    self.active_client = None
 
-  def handleWsCommand(self, msg, connection):
-    #if the message contains ai
-    if 'ai.' in msg:
-      #get the value
-      value = msg.split('=')[1]
-      if self.ap.enabled.value:
-        #set the value
-        self.ap.heading_command.set(float(value))
-      #set the active client to connection id
-      self.active_client = connection
-
-     
   def process(self):
     ap = self.ap
-    #if connection is no longer active set ap.enabled to false
-    #if self.active_client and not self.active_client.active:
-    #  ap.enabled.set(False)
-    #  self.active_client = None
+    gain_values = {'G': ap.rudder_command.value}
+    command = self.Compute(gain_values)
 
-pilot = Trainilot
+    #if connection is no longer active set ap.enabled to false
+    #  self.active_client = None
+    #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
+    if ap.enabled.value and command is not None:
+      if ap.sensors.rudder.angle.value is not None:
+        if self.last_command != command:
+          # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle
+          if abs(ap.sensors.rudder.angle.value - command) > 2:
+            ap.servo.position_command.command(command)
+            self.last_command = command
+
+pilot = TrainPilot
