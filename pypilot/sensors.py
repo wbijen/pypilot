@@ -13,7 +13,7 @@ from client import *
 from values import *
 from resolv import resolv
 
-from gpsd import gpsd_client
+from .gpsd import gpsd
 from gps_filter import *
 
 import quaternion
@@ -374,7 +374,7 @@ class Sensors(object):
         # services that can receive sensor data
         self.nmea = Nmea(self)
         self.signalk = signalk(self)
-        self.gpsd = gpsd_client(self)
+        self.gpsd = gpsd(self)
 
         # actual sensors supported
         self.gps = gps(client)
