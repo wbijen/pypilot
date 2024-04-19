@@ -13,7 +13,7 @@ from client import *
 from values import *
 from resolv import resolv
 
-from .gpsd import gpsd
+from gpsd_client import gpsd
 from gps_filter import *
 
 import quaternion
