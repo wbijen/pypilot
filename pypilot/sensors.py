@@ -360,7 +360,7 @@ class Water(Sensor):
 
     def reset(self):
         self.direction.set(False)
-        self.speed.set(False)
+        self.leeway.set(False)
         
 
 class Sensors(object):

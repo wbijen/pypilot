@@ -319,6 +319,8 @@ class ServerValues(pypilotValue):
         self.need_store = False
         self.pqwatches = [] # priority queue of watches
         self.last_send_watches = 0
+        self.handlers = []
+
 
     def get_msg(self):
         if not self.msg or self.msg == 'new':
@@ -421,6 +423,9 @@ class ServerValues(pypilotValue):
         #if there are handlers, call them
         # only print if the msg contains rudder
 
+        ##if there are handlers, call them
+        for handler in self.handlers:
+            handler(msg, connection)    
         name, data = msg.split('=', 1)
         if not name in self.values:
             print('unknown value' + name)
@@ -432,14 +437,19 @@ class ServerValues(pypilotValue):
     def add_handler(self, handler, name):
         self.handlers[name] = handler
 
-    def load_file(self, filename):
-        profile = None
-        self.persistent_data = {None : {}, 'default' : {}}
-        print("load file",filename)
-        f = open(filename)
-        linei=0
-        while True:
-            linei+=1
+    def load_file(self, f):
+        line = f.readline()
+        while line:
+            name, data = line.split('=', 1)
+            self.persistent_data[name] = line
+            if name in self.values:
+                value = self.values[name]
+                if value.connection:
+                    print('does this ever hit?? ,.wqiop pasm2;')
+                    connection.write(line)
+                    
+            self.values[name] = pypilotValue(self, name, msg=line)
+            self.persistent_values[name] = self.values[name]
             line = f.readline()
             if not line:
                 break
