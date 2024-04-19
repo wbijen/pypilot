@@ -73,7 +73,8 @@ $(document).ready(function() {
     var conf_names = [];
     var profile="default", profiles = [profile];
     var touch = is_touch_enabled();
-    var register = true;
+
+    var rudder_source = 'none';
 
     socket.on('pypilot_values', function(msg) {
         watches = {};
@@ -93,7 +94,7 @@ $(document).ready(function() {
                     range = max - min;
                     step = per * range / 100;
                     handlers[iname + bname] = {step: step, iname: iname, name: name, func: function(event) {
-                        cur = Number($('#' + event.data.iname + 'label').text())
+                        cur = Number($('#' + event.data.iname + 'label').text());
                         pypilot_set(event.data.name, cur + event.data.step);
                     }};
                 }
@@ -130,11 +131,12 @@ $(document).ready(function() {
         pypilot_watch('ap.tack.direction');
 
         pypilot_watch('ap.heading_command', .5);
+        pypilot_watch('rudder.source');
 
-        if(register)
-            $('#mode').change(function(event) {
-                pypilot_set('ap.mode', $('#mode').val());
-            });
+        $('#mode').off('change');
+        $('#mode').change(function(event) {
+            pypilot_set('ap.mode', $('#mode').val());
+        });
 
         // gain
         pypilot_watch('profile');
@@ -142,36 +144,36 @@ $(document).ready(function() {
         pypilot_watch('ap.pilot');
         $('#gain_container').text('');
 
-        if(register) {
-            $('#profile').change(function(event) {
-                pypilot_set('profile', $('#profile').val());
-            });
-            
-            $('#add_profile').click(function(event) {
-                profile = prompt(_("Enter profile name."));
-                if(profile != null) {
-                    if(profiles.includes(profile))
-                        alert("Already have profile " + profile);
-                    else {
-                        profiles.push(profile);
-                        //pypilot_set('profiles', profiles);
-                        pypilot_set('profile', profile);
-                    }
-                }
-            });
+        $('#profile').off('change');
+        $('#profile').change(function(event) {
+            pypilot_set('profile', $('#profile').val());
+        });
 
-            $('#remove_profile').click(function(event) {
-                if(!confirm(_("Remove current profile?")))
-                    return;
-                new_profiles = []
-                for(var p of profiles)
-                    if(p != profile)
-                        new_profiles.push(p);
-                pypilot_set('profiles', new_profiles);
-            });
-        }
+        $('#add_profile').off('click');
+        $('#add_profile').click(function(event) {
+            profile = prompt(_("Enter profile name."));
+            if(profile != null) {
+                if(profiles.includes(profile))
+                    alert("Already have profile " + profile);
+                else {
+                    profiles.push(profile);
+                    //pypilot_set('profiles', profiles);
+                    pypilot_set('profile', profile);
+                }
+            }
+        });
         
-        
+        $('#remove_profile').off('click');
+        $('#remove_profile').click(function(event) {
+            if(!confirm(_("Remove current profile?")))
+                return;
+            new_profiles = []
+            for(var p of profiles)
+                if(p != profile)
+                    new_profiles.push(p);
+            pypilot_set('profiles', new_profiles);
+        });
+              
         gains = [];
         for (var name in list_values)
             if('AutopilotGain' in list_values[name] && name.substr(0, 3) == 'ap.')
@@ -198,9 +200,9 @@ $(document).ready(function() {
                 $('#pilot').append('<option value="' + pilots[pilot] + '">' + pilots[pilot] + '</option>');
         }
 
-        $('#gain_container').append('</select></div>')
+        $('#gain_container').append('</select></div>');
 
-        if(register)
+        $('#pilot').off('change');
         $('#pilot').change(function(event) {
             pypilot_set('ap.pilot', $('#pilot').val());
             show_gains();
@@ -213,7 +215,8 @@ $(document).ready(function() {
         pypilot_watch('imu.compass.calibration.locked');
         pypilot_watch('imu.accel.calibration.locked');
 
-        if(register)
+
+        $('#accel_calibration_locked').off('change');
         $('#accel_calibration_locked').change(function(event) {
             check = $('#accel_calibration_locked').prop('checked');
             pypilot_set('imu.accel.calibration.locked', check);
@@ -221,7 +224,7 @@ $(document).ready(function() {
 
         pypilot_watch('imu.compass.calibration.locked');
 
-        if(register)
+        $('#compass_calibration_locked').off('change');
         $('#compass_calibration_locked').change(function(event) {
             check = $('#compass_calibration_locked').prop('checked');
             pypilot_set('imu.compass.calibration.locked', check);
@@ -288,35 +291,22 @@ $(document).ready(function() {
         pypilot_watch('servo.flags');
 
         // install function handlers for configuration sliders/buttons
-        if(register) {
-            for (var handler in handlers)
-                if(touch)
-                    $('#' + handler).click(handlers[handler], handlers[handler]['func']);
-                else
-                    $('#' + handler).change(handlers[handler], handlers[handler]['func']);
-        }
-        register=false;
+        for (var handler in handlers)
+            if(touch) {
+                $('#' + handler).off('click');
+                $('#' + handler).click(handlers[handler], handlers[handler]['func']);
+            } else {
+                $('#' + handler).off('change');
+                $('#' + handler).change(handlers[handler], handlers[handler]['func']);
+            }
 
         window_resize();        
-            
         setup_watches();
     });
 
     socket.on('pypilot_disconnect', function() {
         $('#connection').text(_('Disconnected'))
     });
-
-    // update manual servo command
-    setTimeout(poll_pypilot, 1000)
-    function poll_pypilot() {
-        setTimeout(poll_pypilot, 200)
-        if(servo_command_timeout > 0) {
-            servo_command_timeout--;
-            if(servo_command_timeout <= 0)
-                servo_command = 0;
-            pypilot_set('servo.command', servo_command);
-        }
-    }
     
     // Event handler for server sent data.
     socket.on('log', function(msg) {
@@ -326,11 +316,17 @@ $(document).ready(function() {
     // Interval function that tests message latency by sending a "ping"
     var ping_pong_times = [];
     var start_time;
-    window.setInterval(function() {
-        start_time = (new Date).getTime();
-        socket.emit('ping');
-    }, 5000);
-    
+    socket.on('connect', () => {
+        window.setInterval(function() {
+            start_time = (new Date).getTime();
+            try {
+                socket.emit('ping');
+            } catch (error) {
+                location.reload();
+            }
+        }, 5000);
+    });
+
     // Handler for the "pong" message. When the pong is received, the
     socket.on('pong', function() {
         var latency = (new Date).getTime() - start_time;
@@ -384,6 +380,14 @@ $(document).ready(function() {
             $('#heading').text(heading_str(heading));
         }
 
+        if('rudder.source' in data) {
+            if(data['rudder.source'] == 'none')
+                $('#center_button').hide();
+            else
+                $('#center_button').show();
+        }
+
+        
         if('ap.tack.timeout' in data)
             $('#tack_timeout').text(Math.round(10*data['ap.tack.timeout'])/10);
 
@@ -406,20 +410,29 @@ $(document).ready(function() {
                 $('#tb_engaged').addClass('toggle-button-selected');
 
                 $('#port10').text('10');
-                $('#port2').text('2');
-                $('#star2').text('2');
+                $('#port1').text('1');
+                $('#star1').text('1');
                 $('#star10').text('10');
-                $('#tack_button').enable(true);
+
+                $('#center_span').hide();
+                $('#tack_button').show();
             } else {
                 $('#tb_engaged button').css('left', "0px");
                 $('#tb_engaged').removeClass('toggle-button-selected');
-
+                
                 $('#port10').text('<<');
-                $('#port2').text('<');
-                $('#star2').text('>');
+                $('#port1').text('<');
+                $('#star1').text('>');
                 $('#star10').text('>>');
-                $('#tack_button').enable(false);
+
+                $('#center_span').show();
+                $('#tack_button').hide();
             }
+        }
+
+        if('ap.heading_command' in data) {
+            heading_command = data['ap.heading_command'];
+            $('#heading_command').text(heading_str(heading_command));
         }
 
         if('ap.pilot' in data) {
@@ -441,6 +454,7 @@ $(document).ready(function() {
             $('#profile').val(profile);
         }
 
+        
         for (var i = 0; i<gains.length; i++)
             if(gains[i] in data) {
                 value = data[gains[i]];
@@ -459,10 +473,6 @@ $(document).ready(function() {
                     $('#' + iname + 'label').text(value);
                 }
             }
-        if('ap.heading_command' in data) {
-            heading_command = data['ap.heading_command'];
-            $('#heading_command').text(heading_str(heading_command));
-        }
 
         if('servo.engaged' in data) {
             if(data['servo.engaged'])
@@ -595,29 +605,89 @@ $(document).ready(function() {
             pypilot_set('ap.enabled', true);
         }
     });
+
+    $('#center_button').click(function(event) {
+        pypilot_set('servo.position', 0);
+    });
     
-    move = function(x) {
+    function move(x) {
         var engaged = $('#tb_engaged').hasClass('toggle-button-selected');
-        if(engaged) {
-            time = new Date().getTime();
-            if(time - heading_set_time > 1000)
-                heading_local_command = heading_command;
-            heading_set_time = time;
-            heading_local_command += x;
-            pypilot_set('ap.heading_command', heading_local_command);
-        } else {
-            if(x != 0) {
-                sign = x > 0 ? 1 : -1;
-                servo_command = -sign;
-                servo_command_timeout = Math.abs(x) > 5 ? 6 : 2;
-            }
+        if(!engaged)
+            return;
+        
+        time = new Date().getTime();
+        if(time - heading_set_time > 1000)
+            heading_local_command = heading_command;
+        heading_set_time = time;
+        heading_local_command += x;
+        pypilot_set('ap.heading_command', heading_local_command);
+    }
+
+    // update manual servo command
+    function poll_pypilot() {
+        if(servo_command_timeout > 0) {
+            servo_command_timeout--;
+            if(servo_command_timeout > 0)
+                setTimeout(poll_pypilot, 50)
+            else    
+                servo_command = 0;
+            pypilot_set('servo.command', servo_command);
         }
     }
-    
+
+    function mousedown(amount) {
+        var engaged = $('#tb_engaged').hasClass('toggle-button-selected');
+        if(engaged) {
+            servo_command_timeout = 0;
+	    move(amount[1]);
+            return;
+        }
+        servo_command = amount[0];
+        servo_command_timeout = 120;
+        pypilot_set('servo.command', servo_command);
+        setTimeout(poll_pypilot, 50)
+    }
+
+    function mouseup(event) {
+        var engaged = $('#tb_engaged').hasClass('toggle-button-selected');
+        if(engaged) {
+            servo_command_timeout = 0;            
+            return;
+        }
+        
+        servo_command_timeout -= 112;
+        if(servo_command_timeout <= 0) {
+            servo_command_timeout = 0;
+            servo_command = 0;
+            pypilot_set('servo.command', 0);
+        }
+    }
+
+    function nocontext(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+    }
+
+    buttons = {'#port1': [-.6, -1], '#star1': [.6, 1], '#port10': [-1, -10], '#star10': [1, 10]};
+    for (var name in buttons) {
+        $(name).on('touchstart', nocontext);
+        $(name).on('touchmove', nocontext);
+        $(name).on('touchend', nocontext);
+        $(name).on('touchcancel', nocontext);
+        $(name).on('contextmenu', nocontext);
+        $(name).on('pointerup', mouseup);
+        $(name).on('pointerdown', function(event) {
+            mousedown(buttons['#'+event.target.id]);
+        });
+    }
+/*
     $('#port10').click(function(event) { move(-10); });
-    $('#port2').click(function(event) { move(-2); });
-    $('#star2').click(function(event) { move(2); });
+    $('#port1').click(function(event) { move(-1); });
+    $('#star1').click(function(event) { move(1); });
     $('#star10').click(function(event) { move(10); });
+*/
+
     $('#tack_button').click(function(event) {
         if($('#tack_button').attr('state') == 'tack')
             openTab(event, 'Tack');
@@ -711,14 +781,14 @@ $(document).ready(function() {
     document.getElementById(currentTab).style.display = "block";
 
     function pypilot_watches(names, watch, period) {
-        for(var i=0; i< names.length; i++)
+        for(var i=0; i<names.length; i++)
             pypilot_watch(names[i], watch ? period : false);
     }
     
     // should be called if tab changes
     setup_watches = function() {
         var tab = currentTab;
-        pypilot_watches(['ap.heading'], tab == 'Control', 0.5);
+        pypilot_watches(['ap.heading', 'rudder.source'], tab == 'Control', 0.5);
         pypilot_watches(gains, tab == 'Gain', 1);
         pypilot_watches(['imu.heading', 'imu.pitch', 'imu.roll', 'rudder.angle'], tab == 'Calibration', .5);
         pypilot_watches(conf_names, tab == 'Configuration', 1);
@@ -728,6 +798,8 @@ $(document).ready(function() {
 
     function window_resize() {
         var w = $(window).width();
+        var wbc = $('#steer_buttons_container').width();
+
         $(".font-resizable").each(function(i, obj) {
             if (w < 600)
                 $(this).css('font-size', w/18+"px")
@@ -743,8 +815,12 @@ $(document).ready(function() {
         $(".font-resizable3").each(function(i, obj) {
             $(this).css('font-size', w/50+"px")
         });
-        $(".button-resizable").each(function(i, obj) {
+        $(".button-resizable").not("#steer_buttons_container .button-resizable").each(function(i, obj) {
             $(this).css('width', w/5+"px")
+            $(this).css('height', w/6+"px")
+        });
+        $("#steer_buttons_container .button-resizable").each(function(i, obj) {
+            $(this).css('width', (wbc/5)-(w*.01)+"px")
             $(this).css('height', w/6+"px")
         });
         $(".button-resizable1").each(function(i, obj) {

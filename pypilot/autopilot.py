@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#   Copyright (C) 2023 Sean D'Epagnier
+#   Copyright (C) 2024 Sean D'Epagnier
 #
 # This Program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public
@@ -9,8 +9,13 @@
 
 # autopilot base handles reading from the imu (boatimu)
 
-import sys, os, math, time, socket
+import time
 print('autopilot start', time.monotonic())
+import sys, os, math, socket, io
+
+# use line buffering so the log files are sensible
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.detach(), line_buffering=True)
 
 pypilot_dir = os.getenv('HOME') + '/.pypilot/'
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -42,14 +47,6 @@ class ModeProperty(EnumProperty):
     def set_internal(self, value):
         super(ModeProperty, self).set(value)
 
-class HeadingOffset(object):
-    def __init__(self):
-        self.value = 0
-
-    def update(self, offset, d):
-        offset = resolv(offset, self.value)
-        self.value = resolv(d*offset + (1-d)*self.value)
-
 class HeadingProperty(RangeProperty):
     def __init__(self, name, mode):
         self.mode = mode
@@ -59,6 +56,8 @@ class HeadingProperty(RangeProperty):
     def set(self, value):
         try:
             value = resolv(float(value), 0 if 'wind' in self.mode.value else 180)
+            # set to tenth of degree
+            value = round(value*10)/10
             super(HeadingProperty, self).set(value)
         except Exception as e:
             pass # ignore for now
@@ -152,13 +151,15 @@ class Autopilot(object):
         self.runtime = self.register(TimeValue, 'runtime') #, persistent=True)
         self.timings = self.register(SensorValue, 'timings', False)
         self.last_heading_mode = False
-            
+
+        '''
         device = '/dev/watchdog0'
         try:
             self.watchdog_device = open(device, 'w')
         except:
             print(_('warning: failed to open special file'), device, _('for writing'))
             print('         ' + _('cannot stroke the watchdog'))
+        '''
 
         self.server.poll() # setup process before we switch main process to realtime
         if os.system('sudo chrt -pf 1 %d 2>&1 > /dev/null' % os.getpid()):
@@ -295,6 +296,8 @@ class Autopilot(object):
             if self.mode.value == 'compass' and self.enabled.value:
                 heading_command = self.heading_command.value + self.compass_change
                 self.heading_command.set(resolv(heading_command, 180))
+            # reset feed-forward gain
+            self.heading_command_rate.time = 0
           
     def compute_heading_error(self, t):
         heading = self.heading.value
@@ -422,7 +425,7 @@ class Autopilot(object):
             self.lastenabled = self.enabled.value
             if self.enabled.value:
                 # reset feed-forward gain and integral gains
-                self.heading_command_rate.set(0)
+                self.heading_command_rate.time = 0
                 self.last_heading_mode = False
 
         newmode = self.last_heading_mode != self.mode.value
@@ -434,16 +437,19 @@ class Autopilot(object):
         if newmode or t0 - self.heading_command_rate.time > 1:
             self.last_heading_command = self.heading_command.value
 
-        # filter the heading command to compute feed-forward gain
-        heading_command_diff = resolv(self.heading_command.value - self.last_heading_command)
-        if not 'wind' in self.mode.value: # wind modes need opposite gain
-            heading_command_diff = -heading_command_diff
-
+        if self.enabled.value:
+            # filter the heading command to compute feed-forward gain
+            heading_command_diff = resolv(self.heading_command.value - self.last_heading_command)
+            if not 'wind' in self.mode.value: # wind modes need opposite gain
+                heading_command_diff = -heading_command_diff
+            lp = .1
+            command_rate = (1-lp)*self.heading_command_rate.value + lp*heading_command_diff
+            self.heading_command_rate.update(command_rate)
+        else:
+            self.heading_command_rate.update(0)
+                
         self.last_heading_command = self.heading_command.value        
         self.heading_command_rate.time = t0
-        lp = .1
-        command_rate = (1-lp)*self.heading_command_rate.value + lp*heading_command_diff
-        self.heading_command_rate.update(command_rate)
                             
         # perform tacking or pilot specific calculation
         if not self.tack.process():
@@ -459,7 +465,7 @@ class Autopilot(object):
                 pilot.process() # implementation specific process
 
         # servo can only disengage under manual control
-        self.servo.force_engaged = self.enabled.value
+        self.servo.ap_enabled = self.enabled.value
 
         t4 = time.monotonic()
         if t4-t3 > period/2:
@@ -476,11 +482,11 @@ class Autopilot(object):
         self.boatimu.poll() # after critical loop is done
         self.tack.poll()
 
-        if heading_command_diff:
+        if self.heading_command_rate.value:
             # decay integral with heading command changes
             e = self.heading_error_int.value
             sign = 1 if e > 0 else -1
-            self.heading_error_int.set(sign*(abs(e)-heading_command_diff/3))
+            self.heading_error_int.set(sign*(abs(e)-self.heading_command_rate.value*3))
 
         t5 = time.monotonic()
         if t5-t4 > period/2 and self.servo.driver:

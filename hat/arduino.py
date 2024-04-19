@@ -55,15 +55,19 @@ def update_firmware(config):
 
     if device.startswith('/dev/spidev'):
         # update flash if needed
-        path = os.getenv('HOME') + '/.pypilot/firmware'
         firmware = False
-        for filename in os.listdir(path):
-            if not filename.startswith('hat_') or not filename.endswith('.hex'):
-                continue
+        try:
+            path = os.getenv('HOME') + '/.pypilot/firmware'
+            for filename in os.listdir(path):
+                if not filename.startswith('hat_') or not filename.endswith('.hex'):
+                    continue
 
-            version = filename[4:-4]
-            if version and float(version) > float(config['version']):
-                firmware = path+os.path.sep + filename
+                version = filename[4:-4]
+                if version and float(version) > float(config['version']):
+                    firmware = path+os.path.sep + filename
+        except Exception as e:
+            print('failed to find firmware', e)
+            return
 
         if not firmware:
             print('did not find firmware to update')
@@ -324,7 +328,7 @@ class arduino(object):
                     continue
                 key = 'ir' + key
             elif cmd == GP:
-                key = 'gpio_ext' + key
+                key = 'gpio_ext%02X' % d[0]
             elif cmd == VOLTAGE:
                 vcc = (d[0] + (d[1]<<7))/1000.0
                 vin = (d[2] + (d[3]<<7))/1000.0
@@ -347,8 +351,10 @@ class arduino(object):
 
             if not self.enabled and key in self.manual_control_keys:
                 self.send_manual(self.manual_control_keys[key], count)
-            else:
-                events.append([key, count])
+                if count != 1:
+                    continue
+                count = -1 # report press for programming
+            events.append([key, count])
 
         t3 = time.monotonic()
         if serial_data:
@@ -367,9 +373,10 @@ class arduino(object):
         return events
 
     def set_actions(self, actions):
-        manual_keys = {'+1': -1,
-                       '-1':  1}
         self.manual_control_keys = {}
+
+        manual_keys = {'+1': -.8,
+                       '-1':  .8}
         for action, keys in actions.items():
             if action in manual_keys:
                 for key in keys:
@@ -438,6 +445,7 @@ def arduino_process(pipe, config):
     while True:
         t0 = time.monotonic()
         events = a.poll()
+        #print('events', events)
         t1 = time.monotonic()
         baud_rate = a.get_baud_rate()
         if baud_rate:
@@ -504,10 +512,8 @@ def main():
     while True:
         t0 = time.monotonic()
         events = a.poll()
-    
         if events:
-            if len(events) > 1:
-                print(events, t0, t0-lt)
+            print(events, t0, t0-lt)
             lt = t0
         baud_rate = a.get_baud_rate()
         if baud_rate:

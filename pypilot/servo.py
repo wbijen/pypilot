@@ -248,7 +248,7 @@ class Servo(object):
         self.speed_gain = self.register(RangeProperty, 'speed_gain', 0, 0, 1)
         self.duty = self.register(SensorValue, 'duty')
 
-        self.faults = self.register(ResettableValue, 'faults', 0, persistent=True)
+        self.faults = self.register(ResettableValue, 'faults', 0, fmt='%.0f', persistent=True)
 
         # power usage
         self.voltage = self.register(SensorValue, 'voltage')
@@ -278,7 +278,7 @@ class Servo(object):
         self.period = self.register(RangeSetting, 'period', .4, .1, 3, 'sec', profiled=True)
         self.compensate_current = self.register(BooleanProperty, 'compensate_current', False, persistent=True)
         self.compensate_voltage = self.register(BooleanProperty, 'compensate_voltage', False, persistent=True)
-        self.amphours = self.register(ResettableValue, 'amp_hours', 0, persistent=True)
+        self.amphours = self.register(ResettableValue, 'amp_hours', 0, fmt='%.2f', persistent=True)
 
         self.watts = self.register(SensorValue, 'watts')
 
@@ -304,7 +304,8 @@ class Servo(object):
         self.windup_change = 0
 
         self.disengaged = True
-        self.force_engaged = False
+        self.ap_enabled = False
+        self.last_ap_enabled = False
 
         self.last_zero_command_time = self.command_timeout = time.monotonic()
         self.driver_timeout_start = 0
@@ -352,11 +353,11 @@ class Servo(object):
         #print('pid', pid, p, i, d)
         # map in min_speed to max_speed range
         self.do_command(pid)
-            
+        
     def do_command(self, speed):
         t = time.monotonic()
         dt = t - self.inttime
-        if self.force_engaged:  # reset windup when not engaged
+        if self.ap_enabled:  # reset windup when not engaged
             self.disengaged = False
         else:
             self.windup = 0
@@ -368,7 +369,7 @@ class Servo(object):
 
         if not speed:
             #print('timeout', t - self.command_timeout)
-            if not self.force_engaged and time.monotonic() - self.command.time > 1:
+            if not self.ap_enabled and time.monotonic() - self.command.set_time > 1:
                 self.disengaged = True
             self.raw_command(0)
             return
@@ -556,6 +557,7 @@ class Servo(object):
 
         fcntl.ioctl(self.device.fileno(), TIOCNXCL) #exclusive
         self.device.close()
+        self.flags.update(0)
         self.driver = False
 
     def send_driver_params(self, mul=1):
@@ -736,6 +738,11 @@ class Servo(object):
         self.send_command()
         self.controller_temp.timeout()
         self.motor_temp.timeout()
+
+        if self.ap_enabled != self.last_ap_enabled:
+            self.last_ap_enabled = self.ap_enabled
+            self.flags.clearbit(ServoFlags.PORT_OVERCURRENT_FAULT | ServoFlags.STARBOARD_OVERCURRENT_FAULT)
+
 
     def fault(self):
         if not self.driver:

@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 #
 #   Copyright (C) 2023 Sean D'Epagnier
@@ -55,10 +56,10 @@ class ActionEngage(ActionPypilot):
         super(ActionEngage, self).__init__(hat, 'engage', 'ap.enabled', True)
 
     def trigger(self, count):
-        super(ActionEngage, self).trigger(count)
         # set heading to current heading
         if self.hat.client and not count and 'ap.heading' in self.hat.last_msg:
             self.hat.client.set('ap.heading_command', self.hat.last_msg['ap.heading'])
+        super(ActionEngage, self).trigger(count)
 
 class ActionMode(ActionEngage):
     def  __init__(self, hat, mode):
@@ -86,8 +87,8 @@ class ActionHeading(Action):
                 if 'wind' in self.hat.last_msg['ap.mode']:
                     sign = -sign
                 self.hat.client.set('ap.heading_command',
-                                    self.hat.last_msg['ap.heading_command'] + self.offset)
-        else: # manual mode
+                                    int(self.hat.last_msg['ap.heading_command']) + self.offset)
+        elif count >= 0: # manual mode
             if count:
                 self.hat.servo_timeout = time.monotonic() + .5
                 self.hat.servo_command = -1 if self.offset > 0 else 1
@@ -222,6 +223,7 @@ class Arduino(Process):
             print('arduino process on', os.getpid())
             if os.system("renice -5 %d" % os.getpid()):
                 print('warning, failed to renice hat arduino process')
+            time.sleep(3)
             while True:
                 arduino.arduino_process(pipe, config)
                 time.sleep(15)
@@ -257,11 +259,12 @@ class Arduino(Process):
                             break
                     pass
                 elif key == 'version':
-                    if self.hat.config.get('version') != code:
-                        print('update version, restart may update firmware')
+                    old_version = self.hat.config.get('version')
+                    if old_version != code:
+                        print('update version from ', old_version, ' to ', code, ' restart may update firmware')
                         self.hat.config['version'] = code;
                         self.hat.write_config()
-                        exit(1)
+                        #exit(1)
                 else:
                     ret.append(msg)
         return ret
@@ -316,23 +319,25 @@ class Hat(object):
         self.configfilename = os.getenv('HOME') + '/.pypilot/hat.conf'
 
         # read config
-        print('loading config file:', self.configfilename)
-        try:
-            file = open(self.configfilename)
-            config = pyjson.loads(file.read())
-            file.close()
-            for name in config:
-                self.config[name] = config[name]
-        except Exception as e:
-            print('config failed:', e)
+        self.client = False
+        if self.read_config(self.configfilename):
+            self.write_config('.bak')
+        else:
+            print('failed to read config file, trying backup config')
+            self.read_config(self.configfilename + '.bak')
 
+        host = self.config['host']
+        print('host', host, time.monotonic())
+        self.client = pypilotClient(host)
+        self.client.registered = False
+            
         # read hardware config
         try:
             configfile = '/proc/device-tree/hat/custom_0'
             f = open(configfile)
             hat_config = pyjson.loads(f.read())
             f.close()
-            print('loaded device tree hat config')
+            print('loaded device tree hat config', time.monotonic())
             if not 'hat' in self.config or hat_config != self.config['hat']:
                 self.config['hat'] = hat_config
                 print('writing device tree hat to hat.conf')
@@ -348,9 +353,9 @@ class Hat(object):
             self.write_config()
 
         # update firmware
-        arduino.update_firmware(config)
+        arduino.update_firmware(self.config)
 
-        self.servo_timeout = time.monotonic() + 1
+        self.servo_timeout = 0
         self.servo_command = 0
         self.last_msg = {'ap.enabled': False,
                          'ap.heading_command': 0,
@@ -362,22 +367,22 @@ class Hat(object):
             self.config['host'] = sys.argv[1]
             self.write_config()
 
-        host = self.config['host']
-        print('host', host)
-
         self.poller = select.poll()        
         self.gpio = gpio.gpio()
+        self.poller.register(self.gpio.pipe[1], select.POLLIN)
+        
         self.lcd = LCD(self)
         #time.sleep(1)
 
-        self.client = pypilotClient(host)
-        self.client.registered = False
         self.watchlist = ['ap.enabled', 'ap.heading_command', 'ap.mode']
         self.watchlist += ['profile', 'profiles']
         self.watchlist += ['ap.tack.state', 'ap.tack.direction']
 
         for name in self.watchlist:
             self.client.watch(name)
+
+        # receive heading once per second for mode changes
+        self.client.watch('ap.heading', 1)
             
         if 'arduino' in self.config['hat']:
             self.arduino = Arduino(self)
@@ -391,8 +396,6 @@ class Hat(object):
         self.lirc = lircd.lirc(self.config)
         self.lirc.registered = False
         self.keytime = False
-        self.keycounts = {}
-        self.lastkeycount = '', 0
 
         self.inputs = [self.gpio, self.arduino, self.lirc]
 
@@ -405,14 +408,14 @@ class Hat(object):
             self.actions.append(ActionKeypad(self.lcd, i, keypadnames[i]))
 
         # stateless actions for autopilot control
-        self.actions += [ActionHeading(self,  1),
-                         ActionHeading(self, -1),
-                         ActionHeading(self,  2),
+        self.actions += [ActionHeading(self, -1),
+                         ActionHeading(self,  1),
                          ActionHeading(self, -2),
-                         ActionHeading(self,  5),
+                         ActionHeading(self,  2),
                          ActionHeading(self, -5),
-                         ActionHeading(self,  10),
+                         ActionHeading(self,  5),
                          ActionHeading(self, -10),
+                         ActionHeading(self,  10),
                          ActionPypilot(self, 'center', 'servo.position', 0),
                          ActionTack(self, 'tack port', 'port'),
                          ActionTack(self, 'tack starboard', 'starboard'),
@@ -493,7 +496,27 @@ class Hat(object):
                 signal.signal(s, cleanup)
         signal.signal(signal.SIGCHLD, cleanup)
 
-    def write_config(self):
+    def read_config(self, filename):
+        print('loading config file:', filename)
+        try:
+            file = open(filename)
+            config = pyjson.loads(file.read())
+            file.close()
+            for name in config:
+                self.config[name] = config[name]
+            return True
+        except Exception as e:
+            print('config failed:', e)
+            try:
+                file = open(filename)
+                print('bad config: ', file.read())
+                file.close()
+            except Exception as e:
+                print('config read exception printing exception', e)
+        return False
+        
+    def write_config(self, suffix=''):
+        print('write config', suffix)
         actions = self.config['actions']
         for name in list(actions):
             if not actions[name] and name[:6] != 'pilot ':
@@ -505,11 +528,11 @@ class Hat(object):
                 self.config['modes'] = values['ap.mode']['choices']
             
         try:
-            f = open(self.configfilename, 'w')
+            f = open(self.configfilename+suffix, 'w')
             f.write(pyjson.dumps(self.config) + '\n')
             f.close()
         except IOError:
-            print('failed to save config file:', self.configfilename)
+            print('failed to save config file:', self.configfilename+suffix)
 
     def update_config(self, name, value):
         if name in self.config and self.config[name] == value:
@@ -522,7 +545,8 @@ class Hat(object):
         self.config[name] = value
 
     def apply_code(self, key, count):
-        self.web.send({'key': key})
+        if count == 1 or count == -1:
+            self.web.send({'key': key})
 
         actions = self.config['actions']
         for action in self.actions:
@@ -530,14 +554,16 @@ class Hat(object):
                 actions[action.name] = []
             keys = actions[action.name]
             if key in keys:
-                if not count:
+                if count <= 0:
                     self.web.send({'action': action.name})
                     if not self.keytime:
-                        break # do not apply keyup if already applied
+                        return # do not apply keyup if already applied
                     self.keytime = False
                 else:
                     self.keytime = key, time.monotonic()
-                action.trigger(count)
+
+                if count >= 0:
+                    action.trigger(count)
                 return
 
         self.web.send({'action': 'none'})
@@ -566,46 +592,34 @@ class Hat(object):
                     print('shutting down since pilots updated')
                     exit(0) #respawn
 
-    def key(self):
-        key = ''
-        count = 0
-        for k, c in self.keycounts.items():
-            if key:
-                key += '_' + k
-                count = max(count, c)
-            else:
-                key, count = k, c
-
-        if (key, count) == self.lastkeycount:
-            return '', 0
-        self.lastkeycount = key, count
-        return self.lastkeycount
-                    
     def poll(self):            
         t0 = time.monotonic()
         for i in self.inputs:
             try:
                 if not i:
                     continue
+
+                keycount = False
                 events = i.poll()
                 for event in events:
                     key, count = event
-                    self.keycounts[key] = count
-                    if not count: # if key is released
+                    if count: # if key is released
+                        keycount = key, count
+                    else:
+                        if keycount:
+                            self.apply_code(*keycount)
+                            keycount = False
                         if self.keytime:
                             self.apply_code(self.keytime[0], 0)
                             self.keytime = False
-                        self.keycounts = {}
+                if keycount:
+                    self.apply_code(*keycount)
 
             except Exception as e:
                 self.inputs.remove(i)
                 print('WARNING, failed to poll!!', e, i)
                 del i
                 return
-
-        key, count = self.key()
-        if key:
-            self.apply_code(key, count)
 
         t1 = time.monotonic()
         msgs = self.client.receive()
@@ -644,9 +658,6 @@ class Hat(object):
                 self.keytime = False
                 self.keycounts = {}
 
-        # receive heading once per second if autopilot is not enabled
-        self.client.watch('ap.heading', False if self.last_msg['ap.enabled'] else 1)
-
         # timeout manual move
         if self.servo_timeout:
             if time.monotonic() > self.servo_timeout:
@@ -671,7 +682,7 @@ class Hat(object):
 
         t4 = time.monotonic()
         dt = t3-t0
-        period = .01 if self.servo_timeout else max(1 - dt, .01)
+        period = .01 if self.servo_timeout else .05 if self.gpio.keypin else max(1 - dt, .01)
 
         if not self.lirc.registered:
             fileno = self.lirc.fileno()

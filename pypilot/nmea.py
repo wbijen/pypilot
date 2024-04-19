@@ -69,7 +69,8 @@ def parse_nmea_gps(line):
         gps = {}
 
         try: # since we are given only time and not date, use current day
-            ts = time.mktime(time.strptime(data[0], '%H%M%S.%f'))
+            x = time.strptime(data[0], '%H%M%S.%f')
+            ts = (x.tm_hour*60+x.tm_min)*60+x.tm_sec
             t0 = time.time()
             global gps_timeoffset
             ts += gps_timeoffset # seconds since 1970
@@ -77,11 +78,12 @@ def parse_nmea_gps(line):
             if ts > t0 or ts < t0 - sec_in_day: # wrong day
                 ts -= gps_timeoffset # undo offset
                 day = int(t0/sec_in_day)
-                gps_timeoffset = sec_in_day*day
+                if gps_timeoffset != sec_in_day*day:
+                    gps_timeoffset = sec_in_day*day
+                    print('reset gps timeoffset', day, ts, t0)
                 if ts + gps_timeoffset > t0:
                     gps_timeoffset -= sec_in_day
                 ts += gps_timeoffset
-                print('reset gps timeoffset', day)
         except:
             ts = time.time()
 
@@ -161,7 +163,7 @@ def parse_nmea_rudder(line):
     except:
         angle = False
 
-    return 'rudder', {'angle': angle}
+    return 'rudder', {'angle': -angle}
 
 
 def parse_nmea_apb(line):
@@ -486,7 +488,7 @@ class Nmea(object):
                         wind = self.sensors.truewind
                         self.send_nmea('APMWV,%.3f,T,%.3f,N,A' % (wind.direction.value, wind.speed.value))
                     elif name == 'rudder':
-                        self.send_nmea('APRSA,%.3f,A,,' % self.sensors.rudder.angle.value)
+                        self.send_nmea('APRSA,%.3f,A,,' % -self.sensors.rudder.angle.value)
                     period = 1/rate
                     self.nmea_times[name] = max(min(self.nmea_times[name] + period, t+period), t)
 

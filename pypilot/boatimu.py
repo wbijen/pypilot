@@ -49,7 +49,7 @@ class IMU(object):
         self.client.watch('imu.compass.calibration')
         self.client.watch('imu.rate')
 
-        self.gyrobias = self.client.register(SensorValue('imu.gyrobias', persistent=True))
+        self.gyrobias = self.client.register(SensorValue('imu.gyrobias', fmt='%.2f', persistent=True))
         self.error = self.client.register(StringValue('imu.error', ''))
         self.lastgyrobiastime = time.monotonic()
 
@@ -145,7 +145,7 @@ class IMU(object):
                     print(_('setting initial gyro bias'), self.gyrobias.value)
                     self.s.GyroBias = tuple(map(math.radians, self.gyrobias.value))
                     self.s.GyroBiasValid = True
-            if t0-self.lastgyrobiastime > 30:
+            if t0-self.lastgyrobiastime > 60:
                 self.gyrobias.set(list(map(math.degrees, self.s.GyroBias)))
                 self.lastgyrobiastime = t0
                 self.s.GyroBiasValid = True
@@ -341,7 +341,9 @@ def CalibrationProcess(cal_pipe, client):
         except Exception as e:
             print(_('failed import calibration fit'), e)
             time.sleep(30) # maybe numpy or scipy isn't ready yet
+
     calibration_fit.CalibrationProcess(cal_pipe, client) # does not return
+
 
 class AutomaticCalibrationProcess():
     def __init__(self, server):
@@ -366,9 +368,10 @@ class AutomaticCalibrationProcess():
         return False
 
     def get_warnings(self):
-        warnings = self.cal_pipe.recv()
-        if warnings:
-            self.warnings = warnings
+        value = self.cal_pipe.recv()
+        wstr = 'warnings='
+        if value and value.startswith(wstr):
+            self.warnings = value[len(wstr):]
         return self.warnings
 
     def __del__(self):
@@ -416,7 +419,7 @@ class BoatIMU(object):
 
         # quaternion needs to report many more decimal places than other sensors
         #sensornames += ['fusionQPose']
-        self.SensorValues['fusionQPose'] = self.register(SensorValue, 'fusionQPose', fmt='%.8f')
+        self.SensorValues['fusionQPose'] = self.register(SensorValue, 'fusionQPose', fmt='%.10f')
     
         self.imu = IMU(client.server)
 
@@ -475,6 +478,34 @@ class BoatIMU(object):
         # apply alignment calibration                                       
         aligned = quaternion.multiply(data['fusionQPose'], self.alignmentQ.value)
         aligned = quaternion.normalize(aligned) # floating point precision errors
+
+        # count down to alignment
+        if self.alignmentCounter.value > 0:
+            if self.alignmentCounter.value != self.last_alignmentCounter:
+                self.alignmentPose = [0, 0, 0, 0]
+            self.alignmentPose = list(map(lambda x, y : x + y, self.alignmentPose, aligned))
+            self.alignmentCounter.set(self.alignmentCounter.value-1)
+
+            if self.alignmentCounter.value == 0:
+                self.alignmentPose = quaternion.normalize(self.alignmentPose)
+                adown = quaternion.rotvecquat([0, 0, 1], quaternion.conjugate(self.alignmentPose))
+
+                alignment = []
+                alignment = quaternion.vec2vec2quat([0, 0, 1], adown)
+                alignment = quaternion.multiply(self.alignmentQ.value, alignment)
+        
+                if len(alignment):
+                    self.update_alignment(alignment)
+
+            self.last_alignmentCounter = self.alignmentCounter.value
+
+        # if alignment or heading offset changed:
+        if self.heading_off.value != self.heading_off.last or \
+           self.alignmentQ.value != self.alignmentQ.last:
+            self.update_alignment(self.alignmentQ.value)
+            self.heading_off.last = self.heading_off.value
+            self.alignmentQ.last = self.alignmentQ.value
+
     
         data['roll'], data['pitch'], data['heading'] = map(math.degrees, quaternion.toeuler(aligned))
         if data['heading'] < 0:
@@ -521,33 +552,6 @@ class BoatIMU(object):
             self.SensorValues[name].set(data[name])
 
         self.uptime.update()
-
-        # count down to alignment
-        if self.alignmentCounter.value > 0:
-            if self.alignmentCounter.value != self.last_alignmentCounter:
-                self.alignmentPose = [0, 0, 0, 0]
-            self.alignmentPose = list(map(lambda x, y : x + y, self.alignmentPose, aligned))
-            self.alignmentCounter.set(self.alignmentCounter.value-1)
-
-            if self.alignmentCounter.value == 0:
-                self.alignmentPose = quaternion.normalize(self.alignmentPose)
-                adown = quaternion.rotvecquat([0, 0, 1], quaternion.conjugate(self.alignmentPose))
-
-                alignment = []
-                alignment = quaternion.vec2vec2quat([0, 0, 1], adown)
-                alignment = quaternion.multiply(self.alignmentQ.value, alignment)
-        
-                if len(alignment):
-                    self.update_alignment(alignment)
-
-            self.last_alignmentCounter = self.alignmentCounter.value
-
-        # if alignment or heading offset changed:
-        if self.heading_off.value != self.heading_off.last or \
-           self.alignmentQ.value != self.alignmentQ.last:
-            self.update_alignment(self.alignmentQ.value)
-            self.heading_off.last = self.heading_off.value
-            self.alignmentQ.last = self.alignmentQ.value
 
         #  warning, cal pipe always sending despite locks
         #how to check this here??  if not 'imu.accel.calibration.locked'
