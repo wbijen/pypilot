@@ -36,10 +36,6 @@ except:
     GPIO = False
 
 def update_firmware(config):
-    if not 'version' in config:
-        print('cannot update firmware until version is known')
-        return
-    
     if not 'hat' in config:
         return
 
@@ -53,45 +49,100 @@ def update_firmware(config):
     if not device:
         return
 
-    if device.startswith('/dev/spidev'):
-        # update flash if needed
-        firmware = False
-        try:
-            path = os.getenv('HOME') + '/.pypilot/firmware'
-            for filename in os.listdir(path):
-                if not filename.startswith('hat_') or not filename.endswith('.hex'):
-                    continue
+    if not device.startswith('/dev/spidev'):
+        print('only support spi devices to update firmware')
+        return
 
-                version = filename[4:-4]
-                if version and float(version) > float(config['version']):
+    if not arduinoconfig.get('resetpin'):
+        print('the reset pin is unknown, cannot update firmware')
+        return
+
+    # determine firmware version we have on disk
+    firmware = False
+    try:
+        path = os.getenv('HOME') + '/.pypilot/firmware'
+        for filename in os.listdir(path):
+            print("FILE", filename)
+            if filename.startswith('hat_') and filename.endswith('.hex'):
+                try:
+                    config['arduino_firmware_version_available'] = float(filename[4:-4])
                     firmware = path+os.path.sep + filename
-        except Exception as e:
-            print('failed to find firmware', e)
+                    break
+                except Exception as e:
+                    print("invalid firmware filename found", filename, e)
+        else:
+            print('no firmware file found in', path)
             return
+                
+    except Exception as e:
+        print('failed to find firmware', e)
+        return
 
-        if not firmware:
-            print('did not find firmware to update')
-            return
+    if not 'arduino_firmware_version' in config:
+        print('cannot update firmware until version is known')
+        return
 
-        print('found firmware update', firmware)
-        time.sleep(1)
+    if config['arduino_firmware_version_available'] <= config['arduino_firmware_version']:
+        print('firmware up to date')
+        return
 
-        def flash(filename, c):
-            command = 'sudo avrdude -P ' + device + ':' + '/dev/gpiochip0:' + str(arduinoconfig['resetpin']) + ' -u -p atmega328p -c linuxspi -U f:' + c + ':' + filename + ' -b 1000000'
-            print('flash cmd', command)
-            ret = os.system(command)
-            return not ret
+    if os.system('which avrdude') != 0:
+        print('cannot update firmware without avrdude')
+        return
+
+    print('found firmware update', firmware)
+    time.sleep(1) # needed?
+
+    resetpin = str(arduinoconfig['resetpin'])
+    import tempfile, subprocess
+    temp = tempfile.mkstemp()
+    p=subprocess.Popen(['avrdude', '-?'], stderr=temp[0], close_fds=True)
+    p.wait()
+
+    f = os.fdopen(temp[0], 'r')
+    f.seek(0)
+    release = ''
+    while not 'version' in release:
+        release = f.readline().rstrip()
+    f.close()
+    avrdude_version = release.split('version')[1]
+    print('avrdude version', avrdude_version)
+    old_avrdude = avrdude_version[1].split()[0].startswith('6')
+    if old_avrdude:
+        print('detected old avrdude')
+        os.system('echo ' + resetpin + ' > /sys/class/gpio/export')
+        os.system('echo out > /sys/class/gpio/gpio' + resetpin + '/direction')
     
-        def verify(filename):
-            return flash(filename, 'v')
+    def flash(filename, c):
+        if old_avrdude:
+            command = 'sudo avrdude -P ' + device + ' -u -p atmega328p -c linuxspi -U f:' + c + ':' + filename + ' -b 1000000'
+        else:
+            command = 'sudo avrdude -P ' + device + ':' + '/dev/gpiochip0:' + resetpin + ' -u -p atmega328p -c linuxspi -U f:' + c + ':' + filename + ' -b 1000000'
+        print('flash cmd', command)
+        ret = os.system(command)             
+        return not ret
     
-        def write(filename):
-            return flash(filename, 'w')
+    def verify(filename):
+        print('verifying', filename)
+        return flash(filename, 'v')
+    
+    def write(filename):
+        print('writing', filename)
+        return flash(filename, 'w')
 
-        # try to verify twice because sometimes this fails
-        if not verify(firmware) and not verify(firmware):
-            if not write(firmware) or not verify(firmware):
-                print('failed to verify or upload', firmware)
+    # try to verify twice because sometimes this fails
+    if verify(firmware) or verify(firmware):
+        print('firmware already up to date!', firmware)
+        config['arduino_firmware_version'] = config['arduino_firmware_version_available']
+    elif not write(firmware):
+        print('failed to write firmware', firmware)
+    elif not verify(firmware):
+        print('failed to verify or upload', firmware)
+    else:
+        print('success updating hat firmware!', firmware)
+
+    if old_avrdude:
+        os.system('echo in > /sys/class/gpio/gpio' + resetpin + '/direction')
     
     
 class arduino(object):    
@@ -341,7 +392,7 @@ class arduino(object):
                 events.append(['analog', adc])
                 continue
             elif cmd == VERSION:
-                self.version = '%d.%d' % (d[0], d[1])
+                self.version = float('%d.%d' % (d[0], d[1]))
                 print('hat firmware version', self.version)
                 events.append(['version', self.version])
                 continue

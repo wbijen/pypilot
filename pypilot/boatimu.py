@@ -259,7 +259,10 @@ def readable_timespan(total):
             t = int(total%int(div))
         else:
             t = total
-        return loop(i+1, mods[i][1]*mod) + (('%d' + mods[i][0] + ' ') % (t/(mods[i][1]*mod)))
+        pre = loop(i+1, mods[i][1]*mod)
+        if pre:
+            pre += ' '
+        return pre + (('%d' + mods[i][0]) % (t/(mods[i][1]*mod)))
     return loop(0, 1)
 
 class TimeValue(StringValue):
@@ -561,8 +564,8 @@ class BoatIMU(object):
                          'fusionQPose': data['fusionQPose']}
         return data
 
-    def poll(self):
-        if self.auto_cal.calibration_ready() and self.cal_data:
+    def poll(self, calibrate=True):
+        if self.auto_cal.calibration_ready() and calibrate and self.cal_data:
             try:
                 self.auto_cal.cal_pipe.send(self.cal_data)
             except Exception as e:

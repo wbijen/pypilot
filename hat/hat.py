@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 #
 #   Copyright (C) 2023 Sean D'Epagnier
@@ -84,10 +83,11 @@ class ActionHeading(Action):
 
         if self.hat.last_msg['ap.enabled']:
             if not count: # only do something if a key is released
+                off = self.offset
                 if 'wind' in self.hat.last_msg['ap.mode']:
-                    sign = -sign
+                    off = -off
                 self.hat.client.set('ap.heading_command',
-                                    int(self.hat.last_msg['ap.heading_command']) + self.offset)
+                                    int(self.hat.last_msg['ap.heading_command']) + off)
         elif count >= 0: # manual mode
             if count:
                 self.hat.servo_timeout = time.monotonic() + .5
@@ -217,6 +217,7 @@ class Arduino(Process):
         super(Arduino, self).__init__(hat)
         self.voltage = {'vcc': 5, 'vin': 3.3}
         self.status = 'Not Connected'
+        self.need_restart = 0
 
     def create(self):
         def process(pipe, config):
@@ -231,6 +232,14 @@ class Arduino(Process):
 
     def poll(self):
         ret = []
+        if self.need_restart:
+            t0 = time.monotonic()
+            if self.need_restart < t0:
+                if os.system('which avrdude') == 0:
+                    print('avrdude available, resetting hat to update firmware')
+                    exit(0)
+                self.need_restart = t0 + 10 # try again in 10 seconds
+
         while True:
             msgs = self.pipe.recv()
             if not msgs:
@@ -259,12 +268,18 @@ class Arduino(Process):
                             break
                     pass
                 elif key == 'version':
-                    old_version = self.hat.config.get('version')
-                    if old_version != code:
-                        print('update version from ', old_version, ' to ', code, ' restart may update firmware')
-                        self.hat.config['version'] = code;
+                    old_version = self.hat.config.get('arduino_firmware_version')
+                    if old_version != code: 
+                        print('actual hat version update from', old_version, 'to', code)
+                        self.hat.config['arduino_firmware_version'] = code;
                         self.hat.write_config()
-                        #exit(1)
+                    available_version = self.hat.config.get('arduino_firmware_version_available', 0.0)
+                    if available_version > code:
+                        print('new firmware version ',
+                              available_version,
+                              ' available to update current version ', code)
+                        # restart once avrdude is available
+                        self.need_restart = time.monotonic()
                 else:
                     ret.append(msg)
         return ret
@@ -352,7 +367,7 @@ class Hat(object):
                                   'lirc':'gpio4'}
             self.write_config()
 
-        # update firmware
+        # possibly update firmware, before initializing lcd (which shares SPI bus)
         arduino.update_firmware(self.config)
 
         self.servo_timeout = 0

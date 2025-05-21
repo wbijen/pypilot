@@ -287,8 +287,10 @@ class ServerProfile(pypilotValue):
         for name, value in persistent_values.items():
             if not value.info.get('profiled'):
                 continue
-            if not name in prev or prev[name] != value.msg:
-                prev[name] = value.msg
+            #print("set profile", name, value, value.msg, prev[name])
+            if value.msg:  # the msg may still be invalidated from a previous set
+                if not name in prev or prev[name] != value.msg:
+                    prev[name] = value.msg
                 self.server_values.need_store = True # ensure we store c
 
             if not name in data:
@@ -302,7 +304,7 @@ class ServerProfile(pypilotValue):
         self.msg = 'new' # invalidate
         self.profile = strprofile
         super(ServerProfile, self).set(msg, False) # inform any clients watching this value
-                
+
 class ServerValues(pypilotValue):
     def __init__(self, server):
         super(ServerValues, self).__init__(self, 'values')
@@ -426,6 +428,7 @@ class ServerValues(pypilotValue):
         ##if there are handlers, call them
         for handler in self.handlers:
             handler(msg, connection)    
+        #print("SERvER HANdLE request", msg)
         name, data = msg.split('=', 1)
         if not name in self.values:
             print('unknown value' + name)
@@ -762,6 +765,8 @@ class pypilotServer(object):
                     try:
                         self.values.HandleRequest(line, connection)                        
                     except Exception as e:
+                        import traceback
+                        print(traceback.format_exc())
                         connection.write('error=invalid request: ' + line)
                         try:
                             print('invalid request from connection', e, line)

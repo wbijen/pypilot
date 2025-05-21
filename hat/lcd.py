@@ -28,7 +28,7 @@ except:
     micropython = False
 
 driver = 'default'
-for pdriver in ['nokia5110', 'jlx12864', 'glut', 'framebuffer', 'tft', 'none']:
+for pdriver in ['nokia5110', 'jlx12864', 'ssd1309', 'gd240160', 'glut', 'framebuffer', 'tft', 'none']:
     if pdriver in sys.argv:
         print('overriding lcd driver "' + driver + '" to command line "' + pdriver + '"')
         driver = pdriver
@@ -113,6 +113,10 @@ class LCD():
             screen = ugfx.spiscreen(0)
         elif driver == 'jlx12864':
             screen = ugfx.spiscreen(1)
+        elif driver == 'ssd1309':
+            screen = ugfx.spiscreen(2)
+        elif driver == 'gd240160':
+            screen = ugfx.spiscreen(3)
         elif driver == 'glut' or (driver == 'default' and use_glut):
             self.use_glut = True
             print('using glut')
@@ -146,7 +150,7 @@ class LCD():
                 #screen.height= min(screen.height, 640)
                 
         if screen:
-            self.bw = 1 if screen.width < 120 else False
+            self.bw=1 if screen.width < 120 else False # larger screens have ability to antialias fonts
             self.mag=1
 
             if not self.surface:

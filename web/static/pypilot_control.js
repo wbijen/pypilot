@@ -31,6 +31,7 @@ function openTab(evt, tabName) {
 
 var setup_watches = false;
 var watches = {};
+var socket;
 
 currentTab="Control";
 
@@ -44,11 +45,12 @@ $(document).ready(function() {
     $('#rudder').text("N/A");
     $('#power_consumption').text("N/A");
     $('#runtime').text("N/A");
+    $('#center_button').hide();
 
     // Connect to the Socket.IO server.
     var port = location.port;
     port = pypilot_web_port;
-    var socket = io.connect(location.protocol + '//' + document.domain + ':' + port + namespace);
+    socket = io.connect(location.protocol + '//' + document.domain + ':' + port + namespace);
 
     function is_touch_enabled() {
         return ( 'ontouchstart' in window ) ||
@@ -316,13 +318,20 @@ $(document).ready(function() {
     // Interval function that tests message latency by sending a "ping"
     var ping_pong_times = [];
     var start_time;
+    var loc = window.location.origin;
+    window.onbeforeunload = function() {
+        ;//      socket.close();
+//        socket.disconnect();
+    }
+    
     socket.on('connect', () => {
         window.setInterval(function() {
             start_time = (new Date).getTime();
             try {
                 socket.emit('ping');
             } catch (error) {
-                location.reload();
+//                if(window.location.origin == loc) // worked??
+//                    location.reload();
             }
         }, 5000);
     });
@@ -586,14 +595,22 @@ $(document).ready(function() {
     });
     
     function pypilot_set(name, value) {
-        socket.emit('pypilot', name + '=' + JSON.stringify(value));
+        try {
+            socket.emit('pypilot', name + '=' + JSON.stringify(value));
+        } catch (error) {
+            location.reload();
+        }
     }
 
     function pypilot_watch(name, period=true) {
         if(period === false && !(name in watches && watches[name]))
             return; // already not watching, no need to inform server
         watches[name] = period;
-        socket.emit('pypilot', 'watch={"' + name + '":' + JSON.stringify(period) + '}')
+        try {
+            socket.emit('pypilot', 'watch={"' + name + '":' + JSON.stringify(period) + '}')
+        } catch (error) {
+            location.reload();
+        }
     }
 
     // Control
@@ -619,6 +636,8 @@ $(document).ready(function() {
         if(time - heading_set_time > 1000)
             heading_local_command = heading_command;
         heading_set_time = time;
+        if($('#mode').val().includes('wind'))
+            x = -x;
         heading_local_command += x;
         pypilot_set('ap.heading_command', heading_local_command);
     }
@@ -669,7 +688,7 @@ $(document).ready(function() {
         return false;
     }
 
-    buttons = {'#port1': [-.6, -1], '#star1': [.6, 1], '#port10': [-1, -10], '#star10': [1, 10]};
+    buttons = {'#port1': [.7, -1], '#star1': [-.7, 1], '#port10': [1, -10], '#star10': [-1, 10]};
     for (var name in buttons) {
         $(name).on('touchstart', nocontext);
         $(name).on('touchmove', nocontext);
@@ -763,7 +782,7 @@ $(document).ready(function() {
                 target.href = window.location.origin;
                 target.port = 33333;
             }
-
+            
         }
     }, false);
 
