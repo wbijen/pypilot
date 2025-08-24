@@ -172,6 +172,7 @@ class signalk(object):
         self.signalk_host_port = False
         self.signalk_ws_url = False
         self.ws = False
+        self.WebSocketTimeoutException = Exception
 
         self.initialized = True
         
@@ -270,7 +271,7 @@ class signalk(object):
         
     def connect_signalk(self):
         try:
-            from websocket import create_connection, WebSocketBadStatusException
+            from websocket import create_connection, WebSocketBadStatusException, WebSocketTimeoutException
         except Exception as e:
             print('signalk ' + _('cannot create connection:'), e)
             print(_('try') + ' pip3 install websocket-client ' + _('or') + ' apt install python3-websocket')
@@ -285,7 +286,8 @@ class signalk(object):
         self.keep_token = False
         try:
             self.ws = create_connection(self.signalk_ws_url, header={'Authorization': 'JWT ' + self.token})
-            self.ws.settimeout(0) # nonblocking
+            self.ws.settimeout(0.1) # small timeout to avoid blocking
+            self.WebSocketTimeoutException = WebSocketTimeoutException
         except WebSocketBadStatusException as e:
             print('signalk ' + _('bad status, rejecting token'), e)
             self.invalid_token()
@@ -402,8 +404,12 @@ class signalk(object):
         while True:
             try:
                 msg = self.ws.recv()
-            except Exception as e:
+            except self.WebSocketTimeoutException:
                 break
+            except Exception as e:
+                debug('signalk websocket recv exception', e)
+                self.disconnect_signalk()
+                return
 
             if not msg:
                 print('signalk server closed connection')
