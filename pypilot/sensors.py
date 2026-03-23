@@ -22,11 +22,16 @@ import quaternion
 source_priority = {'gpsd' : 1, 'servo': 1, 'serial' : 2, 'tcp' : 3,
                    'signalk' : 4, 'water+wind' : 5, 'gps+wind' : 6, 'none' : 7}
 
+# default update rate (Hz) for sensors that do not expose a configurable rate
+DEFAULT_SENSOR_RATE = 4
+
 class Sensor(object):
     def __init__(self, client, name):
         self.source = client.register(StringValue(name + '.source', 'none'))
         if name != 'apb':
-            self.rate = client.register(RangeProperty(name + '.rate', 4, 0, 50))
+            self.rate = client.register(
+                RangeProperty(name + '.rate', DEFAULT_SENSOR_RATE, 0, 50)
+            )
         self.lastupdate = 0
         self.device = None
         self.name = name
@@ -42,15 +47,20 @@ class Sensor(object):
            data['device'] != self.device:
             return False
 
+        t = time.monotonic()
+        rate = self.rate.value if hasattr(self, 'rate') else DEFAULT_SENSOR_RATE
+        if rate > 0 and t - self.lastupdate < 1.0 / rate:
+            return False
+
         if not self.update(data):
             return False
-                
+
         if self.source.value != source:
             print(_('sensor found'), self.name, source, data['device'], time.asctime(time.localtime(time.time())))
             self.source.set(source)
             self.device = data['device']
-        self.lastupdate = time.monotonic()
-        
+        self.lastupdate = t
+
         return True
 
     def reset(self):
