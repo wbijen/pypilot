@@ -144,6 +144,18 @@ class Autopilot(object):
         self.heading_error = self.register(SensorValue, 'heading_error')
         self.heading_error_int = self.register(SensorValue, 'heading_error_int')
         self.heading_error_int_time = time.monotonic()
+        self.jetson_mode = self.register(
+            EnumProperty,
+            'jetson.mode',
+            'off',
+            ['off', 'observe', 'jetson_ai', 'jetson_ai_gps'],
+            persistent=True)
+        self.jetson_state = self.register(StringValue, 'jetson.state', 'inactive')
+        self.jetson_confidence = self.register(SensorValue, 'jetson.confidence', 0.0)
+        self.jetson_reason = self.register(StringValue, 'jetson.reason', '')
+        self.jetson_heading_offset = self.register(SensorValue, 'jetson.heading_offset', 0.0)
+        self.jetson_target_heading = self.register(SensorValue, 'jetson.target_heading', 0.0, directional=True)
+        self.jetson_last_update = self.register(SensorValue, 'jetson.last_update', 0.0)
 
         # track heading command changes
         self.heading_command_rate = self.register(SensorValue, 'heading_command_rate')
