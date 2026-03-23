@@ -62,6 +62,30 @@ class HeadingProperty(RangeProperty):
         except Exception as e:
             pass # ignore for now
 
+class TimedRangeProperty(RangeProperty):
+    def __init__(self, name, initial, min_value, max_value, **kwargs):
+        self.time = 0
+        self.set_time = 0
+        super(TimedRangeProperty, self).__init__(name, initial, min_value, max_value, **kwargs)
+        self.time = 0
+        self.set_time = 0
+
+    def set(self, value):
+        try:
+            value = float(value)
+        except:
+            return
+
+        if value < self.min_value or value > self.max_value:
+            return
+
+        self.time = time.monotonic()
+        self.set_time = self.time
+        Property.set(self, value)
+
+    def fresh(self, timeout=.8):
+        return time.monotonic() - self.time < timeout
+
 class TimeStamp(SensorValue):
     def __init__(self):
         super(TimeStamp, self).__init__('timestamp', 0)
@@ -109,8 +133,7 @@ class Autopilot(object):
         self.lastmode = False    
         
         self.heading_command = self.register(HeadingProperty, 'heading_command', self.mode)
-        self.rudder_command = self.register(RangeProperty, 'rudder_command', 0, -1, 1)
-        self.throttle_command = self.register(RangeProperty, 'throttle_command', 0, -1, 1)
+        self.rudder_command = self.register(TimedRangeProperty, 'rudder_command', 0, -1, 1)
         self.enabled = self.register(BooleanProperty, 'enabled', False)
         self.lastenabled = False
         

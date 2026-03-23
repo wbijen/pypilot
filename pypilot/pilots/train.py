@@ -7,37 +7,13 @@
 # License as published by the Free Software Foundation; either
 # version 3 of the License, or (at your option) any later version.  
 
-from pilot import AutopilotPilot
+from websocket_rudder import WebsocketRudderPilot
 
-# this pilot is an experiment to command the rudder
-# to an absolute position rather than relative speed
-# 
-# This pilot requires rudder feedback
-#
-class TrainPilot(AutopilotPilot):
+
+# Keep the legacy train pilot name as a compatibility alias
+# for websocket rudder control.
+class TrainPilot(WebsocketRudderPilot):
   def __init__(self, ap):
-    super(TrainPilot, self).__init__('train', ap)
-    self.ap = ap
-    self.gains = {}
-    self.Gain('G', 40, 20, 45)
-    self.last_command = 0
-    #self.Gain('RS', 0.15, 0, 0.03)
-
-
-  def process(self):
-    ap = self.ap
-    gain_values = {'G': ap.rudder_command.value}
-    command = self.Compute(gain_values)
-
-    #if connection is no longer active set ap.enabled to false
-    #  self.active_client = None
-    #print('rudder_angle ' + str(ap.sensors.rudder.angle.value))
-    if ap.enabled.value and command is not None:
-      if ap.sensors.rudder.angle.value is not None:
-        if self.last_command != command:
-          # if the current rudder angle is not equal to the rudder command within 3% of the rudder angle
-          if abs(ap.sensors.rudder.angle.value - command) > 2:
-            ap.servo.position_command.command(command)
-            self.last_command = command
+    super(TrainPilot, self).__init__(ap, 'train')
 
 pilot = TrainPilot
