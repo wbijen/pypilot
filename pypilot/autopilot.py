@@ -156,6 +156,9 @@ class Autopilot(object):
         self.jetson_heading_offset = self.register(SensorValue, 'jetson.heading_offset', 0.0)
         self.jetson_target_heading = self.register(SensorValue, 'jetson.target_heading', 0.0, directional=True)
         self.jetson_last_update = self.register(SensorValue, 'jetson.last_update', 0.0)
+        self.jetson_debug_state = self.register(StringValue, 'jetson.debug.state', 'idle')
+        self.jetson_debug_viewers = self.register(SensorValue, 'jetson.debug.viewers', 0.0)
+        self.jetson_debug_last_update = self.register(SensorValue, 'jetson.debug.last_update', 0.0)
 
         # track heading command changes
         self.heading_command_rate = self.register(SensorValue, 'heading_command_rate')
