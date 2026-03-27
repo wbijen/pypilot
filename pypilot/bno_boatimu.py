@@ -116,6 +116,7 @@ class BNOBoatIMU:
         self.reset_alignment = False
         self.alignmentPose = [0, 0, 0, 0]
         self.last_cal_status = -1
+        self.cal_saved = False
 
     # ------------------------------------------------------------------
     def register(self, _type, name, *args, **kwargs):
@@ -240,8 +241,9 @@ class BNOBoatIMU:
         self.uptime.update()
         cal = self.hw.calibration_status()
         self.bno_cal_status.set(cal)
-        if cal == 3 and self.last_cal_status != 3:
+        if cal == 3 and not self.cal_saved:
             self.hw.save_calibration()
+            self.cal_saved = True
         self.last_cal_status = cal
 
         # ---- feed calibration process ----
