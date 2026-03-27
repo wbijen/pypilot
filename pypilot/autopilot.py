@@ -24,6 +24,10 @@ from server import pypilotServer
 from client import pypilotClient
 from values import *
 from boatimu import *
+try:
+    from bno_boatimu import BNOBoatIMU as BoatIMU
+except ImportError:
+    pass  # fall back to RTIMU-based BoatIMU from boatimu import *
 from resolv import *
 import tacking, servo
 from version import strversion

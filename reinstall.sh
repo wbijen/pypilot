@@ -1,23 +1,22 @@
 #!/bin/bash
+# Deploy current branch (default: bno) to the running pypilot service.
+# Usage:  ./reinstall.sh [branch]
 
-# Perform git fetch and check for changes
+BRANCH="${1:-bno}"
+
 git fetch
 
-if [ -z "$(git diff origin/master)" ]; then
-    echo "Nothing to update"
+if [ -z "$(git diff origin/$BRANCH)" ] && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/$BRANCH)" ]; then
+    echo "Nothing to update (already at latest $BRANCH)"
 else
-    # Stop pypilot service
-    sudo systemctl stop pypilot.service
+    sudo systemctl stop pypilot.service 2>/dev/null || true
 
-    # If changes are found, pull them
-    git pull
-    
-    # Install the project
+    git checkout "$BRANCH"
+    git pull origin "$BRANCH"
+
     sudo python3 setup.py install
 
-    # Start pypilot service
-    sudo systemctl start pypilot.service
+    sudo systemctl start pypilot.service 2>/dev/null || true
 
-    # Watch the log
-    journalctl -u pypilot.service -f
+    journalctl -u pypilot.service -f 2>/dev/null || echo "Service not managed by systemd; run manually."
 fi
