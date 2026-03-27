@@ -134,7 +134,6 @@ class BNO08xHardware:
         self._int_pin_num = int_pin
         self._int_io = None   # digitalio object, set up in _init
         self.bno = None
-        self.rate = 10         # Hz, used by BNOBoatIMU timing loop
         self._last_accel = None
         self._last_gyro = None
         self._last_mag = None
