@@ -268,12 +268,17 @@ class BNO08xHardware:
         """
         Return BNO086's internal calibration accuracy (0-3).
         3 = fully calibrated.  -1 = not available.
+
+        Reads accuracy from the cached rotation vector tuple (index 4)
+        to avoid triggering a separate I2C transaction that corrupts the
+        SHTP sequence-number state.
         """
-        if self.bno is None:
+        if self._last_quat is None:
             return -1
         try:
-            return self.bno.calibration_status
-        except Exception:
+            # Adafruit rotation vector tuple: (i, j, k, real, accuracy)
+            return int(self._last_quat[4])
+        except (IndexError, TypeError):
             return -1
 
     def save_calibration(self):
