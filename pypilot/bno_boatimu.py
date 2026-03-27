@@ -103,6 +103,9 @@ class BNOBoatIMU:
         self.hw = BNO08xHardware(i2c_address=i2c_address,
                                   use_spi=use_spi, cs_pin=cs_pin)
         self.auto_cal = AutomaticCalibrationProcess(client.server)
+        # autopilot.py iterates childprocesses looking for .process to kill;
+        # BNO086 runs in-thread so there is no subprocess to manage.
+        self.imu = type('_NullIMU', (), {'process': None})()
 
         # internal state
         self.lasttimestamp = 0
