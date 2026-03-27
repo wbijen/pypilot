@@ -631,6 +631,16 @@ class CalibrationDialogBase ( wx.Dialog ):
 
 		fgSizer19.Add( self.stHeel, 0, wx.ALL, 5 )
 
+		self.m_staticTextBnoCal = wx.StaticText( self.m_panel3, wx.ID_ANY, _(u"BNO cal"), wx.DefaultPosition, wx.DefaultSize, 0 )
+		self.m_staticTextBnoCal.Wrap( -1 )
+
+		fgSizer19.Add( self.m_staticTextBnoCal, 0, wx.ALL, 5 )
+
+		self.stBnoCal = wx.StaticText( self.m_panel3, wx.ID_ANY, _(u"N/A"), wx.DefaultPosition, wx.DefaultSize, 0 )
+		self.stBnoCal.Wrap( -1 )
+
+		fgSizer19.Add( self.stBnoCal, 0, wx.ALL, 5 )
+
 
 		fgSizer181.Add( fgSizer19, 1, wx.EXPAND, 5 )
 

@@ -260,8 +260,6 @@ class BNOBoatIMU:
         if (abs(self.SensorValues['pitch'].value or 0) > 35 or
                 abs(self.SensorValues['roll'].value or 0) > 35):
             warnings += ' alignment warning'
-        cal = self.hw.calibration_status()
-        warnings += ' BNO cal:%d/3' % cal if cal >= 0 else ''
         self.warning.update(warnings)
 
 

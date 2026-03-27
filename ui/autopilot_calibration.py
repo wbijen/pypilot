@@ -77,7 +77,8 @@ class CalibrationDialog(autopilot_control_ui.CalibrationDialogBase):
         
         watchlist = [
             ['imu.fusionQPose', ('imu.alignmentCounter', .2), ('imu.heading', .5),
-             ('imu.alignmentQ', 1), ('imu.pitch', .5), ('imu.roll', .5), ('imu.heel', .5), ('imu.heading_offset', 1)],
+             ('imu.alignmentQ', 1), ('imu.pitch', .5), ('imu.roll', .5), ('imu.heel', .5), ('imu.heading_offset', 1),
+             ('imu.bno_cal_status', 1)],
             calwatch('accel'),
             calwatch('compass') + ['imu.fusionQPose'],
             ['rudder.offset', 'rudder.scale', 'rudder.nonlinearity', ('rudder.angle', 1),
@@ -217,6 +218,15 @@ class CalibrationDialog(autopilot_control_ui.CalibrationDialogBase):
             elif name == 'imu.heading_offset':
                 self.pypilot_heading_offset = value
                 self.heading_offset_timer.Start(1000, True)
+            elif name == 'imu.bno_cal_status':
+                if value is not False and value >= 0:
+                    self.stBnoCal.SetLabel('%d/3' % value)
+                    self.stBnoCal.SetForegroundColour(
+                        wx.GREEN if value >= 2 else wx.RED)
+                else:
+                    self.stBnoCal.SetLabel('N/A')
+                    self.stBnoCal.SetForegroundColour(
+                        wx.NullColour)
 
         #elif self.m_notebook.GetSelection() == 1:
             self.accel_calibration_plot.read_data(msg)
