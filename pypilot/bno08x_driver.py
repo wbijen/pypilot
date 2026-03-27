@@ -73,9 +73,16 @@ def bno_quat_to_ned(bno_quat):
 
 
 # ---------------------------------------------------------------------------
-# Try to import the Adafruit BNO08x library (requires Blinka on Linux/RPi)
+# Import the vendored Adafruit BNO08x library (bundled in pypilot/adafruit_bno08x)
+# so we are not affected by upstream changes or missing pip packages.
+# Falls back to the system-installed library if the vendored copy is absent.
 # ---------------------------------------------------------------------------
 try:
+    import os as _os
+    import sys as _sys
+    _vendor = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)))
+    if _vendor not in _sys.path:
+        _sys.path.insert(0, _vendor)
     import board
     import busio
     from adafruit_bno08x import (
@@ -276,8 +283,8 @@ class BNO08xHardware:
         if self.bno is None:
             return -1
         try:
-            return int(self.bno._magnetometer_accuracy)
-        except (AttributeError, TypeError):
+            return int(self.bno.calibration_status)
+        except Exception:
             return -1
 
     def save_calibration(self):
