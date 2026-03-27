@@ -273,12 +273,11 @@ class BNO08xHardware:
         to avoid triggering a separate I2C transaction that corrupts the
         SHTP sequence-number state.
         """
-        if self._last_quat is None:
+        if self.bno is None:
             return -1
         try:
-            # Adafruit rotation vector tuple: (i, j, k, real, accuracy)
-            return int(self._last_quat[4])
-        except (IndexError, TypeError):
+            return int(self.bno._magnetometer_accuracy)
+        except (AttributeError, TypeError):
             return -1
 
     def save_calibration(self):
