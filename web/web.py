@@ -6,8 +6,9 @@
 # License as published by the Free Software Foundation; either
 # version 3 of the License, or (at your option) any later version.  
 
-import sys, os
-from flask import Flask, render_template, session, request, Markup
+import sys, os, json
+from pathlib import Path
+from flask import Flask, render_template, session, request, Markup, jsonify, send_file
 
 from flask_socketio import SocketIO, Namespace, emit, join_room, leave_room, \
     close_room, rooms, disconnect
@@ -57,6 +58,130 @@ async_mode = None
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode, cors_allowed_origins="*")
+
+
+def _telemetry_root():
+    return Path(os.getenv('PYPILOT_RECORD_ROOT', os.path.join(os.getenv('HOME'), '.pypilot', 'recordings')))
+
+
+def _read_json(path):
+    try:
+        with path.open('r', encoding='utf-8') as handle:
+            value = json.load(handle)
+    except Exception:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _session_dirs(root):
+    if not root.exists() or not root.is_dir():
+        return {}
+    result = {}
+    for child in root.iterdir():
+        if child.is_dir():
+            result[child.name] = child
+    return result
+
+
+def _telemetry_artifacts(session_dir):
+    file_map = {
+        'telemetry': 'telemetry.jsonl',
+        'telemetryMeta': 'telemetry_meta.json',
+        'telemetrySummary': 'telemetry_summary.json',
+    }
+    artifacts = {'telemetry': False, 'telemetryMeta': False, 'telemetrySummary': False,
+                 'video': False, 'videoMeta': False, 'videoSummary': False}
+    paths = {'telemetry': None, 'telemetryMeta': None, 'telemetrySummary': None,
+             'video': None, 'videoMeta': None, 'videoSummary': None}
+    if not session_dir:
+        return artifacts, paths
+    for name, filename in file_map.items():
+        candidate = session_dir / filename
+        if candidate.exists():
+            artifacts[name] = True
+            paths[name] = str(candidate)
+    return artifacts, paths
+
+
+def _telemetry_artifact_path(session_id, artifact_key):
+    file_map = {
+        'telemetry': 'telemetry.jsonl',
+        'telemetryMeta': 'telemetry_meta.json',
+        'telemetrySummary': 'telemetry_summary.json',
+    }
+    filename = file_map.get(artifact_key)
+    if not filename:
+        return None
+    session_dir = _session_dirs(_telemetry_root()).get(session_id)
+    if not session_dir:
+        return None
+    candidate = session_dir / filename
+    if not candidate.exists() or not candidate.is_file():
+        return None
+    return candidate
+
+
+def _started_at_label(value):
+    if not value:
+        return '-'
+    import datetime
+    timestamp = datetime.datetime.fromtimestamp(float(value), tz=datetime.timezone.utc)
+    return timestamp.strftime('%Y-%m-%d %H:%M UTC')
+
+
+def _telemetry_session_payload(session_id, session_dir):
+    artifacts, paths = _telemetry_artifacts(session_dir)
+    telemetry_meta = _read_json(session_dir / 'telemetry_meta.json') if session_dir else None
+    telemetry_summary = _read_json(session_dir / 'telemetry_summary.json') if session_dir else None
+    started_at_utc = None
+    for payload in (telemetry_meta, telemetry_summary):
+        if not payload:
+            continue
+        for key in ('actual_start_utc', 'start_time_utc', 'scheduled_start_utc'):
+            value = payload.get(key)
+            if isinstance(value, (int, float)) and value > 0:
+                started_at_utc = float(value)
+                break
+        if started_at_utc:
+            break
+    missing = []
+    if not artifacts['telemetry']:
+        missing.append('telemetry')
+    if not artifacts['telemetryMeta']:
+        missing.append('telemetry meta')
+    if not artifacts['telemetrySummary']:
+        missing.append('telemetry summary')
+    notes = 'Telemetry artifacts are present.' if not missing else 'Missing ' + ', '.join(missing) + '.'
+    status = 'complete' if artifacts['telemetry'] and artifacts['telemetryMeta'] and artifacts['telemetrySummary'] else 'partial'
+    return {
+        'sessionId': session_id,
+        'startedAtUtc': started_at_utc,
+        'startedAtLabel': _started_at_label(started_at_utc),
+        'status': status,
+        'source': 'live',
+        'artifacts': artifacts,
+        'notes': notes,
+        'description': 'Telemetry session view from the pypilot recording root.',
+        'exportReady': False,
+        'paths': paths,
+        'metadata': {
+            'telemetryMeta': telemetry_meta,
+            'telemetrySummary': telemetry_summary,
+            'videoMeta': None,
+            'videoSummary': None,
+        },
+    }
+
+
+def _telemetry_list_payload():
+    root = _telemetry_root()
+    session_dirs = _session_dirs(root)
+    sessions = [_telemetry_session_payload(session_id, session_dir) for session_id, session_dir in session_dirs.items()]
+    sessions.sort(key=lambda item: (-(item['startedAtUtc'] or 0.0), item['sessionId']))
+    message = 'Found %d telemetry session(s).' % len(sessions)
+    if not root.exists():
+        message += ' Telemetry root unavailable: %s' % root
+    return {'ok': True, 'liveSupported': True, 'message': message, 'sessions': sessions}
 
 try:
     from flask_babel import Babel, gettext
@@ -182,6 +307,28 @@ def calibrationplot():
 @app.route('/client')
 def client():
     return render_template('client.html', async_mode=socketio.async_mode,pypilot_web_port=pypilot_web_port)
+
+
+@app.route('/api/telemetry-sessions')
+def telemetry_sessions():
+    return jsonify(_telemetry_list_payload())
+
+
+@app.route('/api/telemetry-sessions/<path:session_id>')
+def telemetry_session_detail(session_id):
+    root = _telemetry_root()
+    session_dir = _session_dirs(root).get(session_id)
+    if not session_dir:
+        return jsonify({'ok': False, 'message': 'Unknown session: ' + session_id}), 404
+    return jsonify({'ok': True, 'session': _telemetry_session_payload(session_id, session_dir)})
+
+
+@app.route('/api/telemetry-sessions/<path:session_id>/artifacts/<artifact_key>')
+def telemetry_session_artifact(session_id, artifact_key):
+    candidate = _telemetry_artifact_path(session_id, artifact_key)
+    if not candidate:
+        return jsonify({'ok': False, 'message': 'Unknown telemetry artifact: ' + artifact_key}), 404
+    return send_file(str(candidate), as_attachment=True, download_name=candidate.name)
 
 translations = []
 static = False

@@ -33,6 +33,7 @@ import tacking, servo
 from version import strversion
 from sensors import Sensors
 import pilots
+from recording import RecordLogger
 
 def minmax(value, r):
     return min(max(value, -r), r)
@@ -154,15 +155,24 @@ class Autopilot(object):
             'off',
             ['off', 'observe', 'jetson_ai', 'jetson_ai_gps'],
             persistent=True)
-        self.jetson_state = self.register(StringValue, 'jetson.state', 'inactive')
-        self.jetson_confidence = self.register(SensorValue, 'jetson.confidence', 0.0)
-        self.jetson_reason = self.register(StringValue, 'jetson.reason', '')
-        self.jetson_heading_offset = self.register(SensorValue, 'jetson.heading_offset', 0.0)
-        self.jetson_target_heading = self.register(SensorValue, 'jetson.target_heading', 0.0, directional=True)
-        self.jetson_last_update = self.register(SensorValue, 'jetson.last_update', 0.0)
-        self.jetson_debug_state = self.register(StringValue, 'jetson.debug.state', 'idle')
-        self.jetson_debug_viewers = self.register(SensorValue, 'jetson.debug.viewers', 0.0)
-        self.jetson_debug_last_update = self.register(SensorValue, 'jetson.debug.last_update', 0.0)
+        self.jetson_state = self.register(Property, 'jetson.state', 'inactive')
+        self.jetson_confidence = self.register(Property, 'jetson.confidence', 0.0)
+        self.jetson_reason = self.register(Property, 'jetson.reason', '')
+        self.jetson_heading_offset = self.register(Property, 'jetson.heading_offset', 0.0)
+        self.jetson_target_heading = self.register(Property, 'jetson.target_heading', 0.0)
+        self.jetson_last_update = self.register(Property, 'jetson.last_update', 0.0)
+        self.jetson_debug_state = self.register(Property, 'jetson.debug.state', 'idle')
+        self.jetson_debug_viewers = self.register(Property, 'jetson.debug.viewers', 0.0)
+        self.jetson_debug_last_update = self.register(Property, 'jetson.debug.last_update', 0.0)
+        self.jetson_record_state = self.register(Property, 'jetson.record.state', 'inactive')
+        self.jetson_record_session_id = self.register(Property, 'jetson.record.session_id', '')
+        self.jetson_record_reason = self.register(Property, 'jetson.record.reason', '')
+        self.jetson_record_storage_ok = self.register(BooleanProperty, 'jetson.record.storage_ok', False)
+        self.jetson_record_start_time_utc = self.register(Property, 'jetson.record.start_time_utc', 0.0)
+        self.jetson_record_clock_sync_ok = self.register(BooleanProperty, 'jetson.record.clock_sync_ok', False)
+        self.jetson_record_clock_offset_ms = self.register(Property, 'jetson.record.clock_offset_ms', 0.0)
+        self.jetson_record_last_update = self.register(Property, 'jetson.record.last_update', 0.0)
+        self.recording = RecordLogger(self)
 
         # track heading command changes
         self.heading_command_rate = self.register(SensorValue, 'heading_command_rate')
@@ -536,6 +546,7 @@ class Autopilot(object):
 
         self.timings.set([t1-t0, t2-t1, t3-t2, t4-t3, t5-t4, t5-t0])
         self.timestamp.set(t0-self.starttime)
+        self.recording.poll()
           
         #if self.watchdog_device:
         #    self.watchdog_device.write('c')
