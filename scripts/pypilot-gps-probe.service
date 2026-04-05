@@ -1,0 +1,17 @@
+[Unit]
+Description=Pypilot GPS Probe Service
+After=network-online.target gpsd.service gpsd.socket
+Wants=network-online.target gpsd.socket
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/pypilot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/pypilot/scripts/gpsprobe.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

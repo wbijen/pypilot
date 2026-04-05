@@ -85,6 +85,18 @@
         <div style="flex-grow: 1"></div>
         <button id="tack_button" class="button button-resizable1 font-resizable2"></button>
       </div>
+      <br>
+      <div class="w3-row" style="display: flex; align-items: center; gap: 1em; flex-wrap: wrap;">
+        <div class="toggle-button button-resizable1" id="tb_record">
+          <button id="record_toggle" class="font-resizable2 button-resizable2">{{_('Start Recording')}}</button>
+        </div>
+        <div style="font-size: 1.1em;">
+          {{_('Recording')}}: <b><span id="record_state">idle</span></b>
+        </div>
+        <div style="font-size: 0.95em; word-break: break-all;">
+          {{_('Session')}}: <span id="record_session">-</span>
+        </div>
+      </div>
     </div>
     <div id="Gain" class="w3-container tab" style="min-width: 480px;">
       <br>

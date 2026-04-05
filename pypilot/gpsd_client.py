@@ -107,7 +107,9 @@ class gpsProcess(multiprocessing.Process):
                     self.devices.remove(device)
                     ret = True
         elif cls == 'TPV':
-            if msg['mode'] == 3:
+            # gpsd mode 2 already provides a usable horizontal fix for nav.
+            # Requiring mode 3 leaves pypilot blind when altitude is unavailable.
+            if msg.get('mode', 0) >= 2 and 'lat' in msg and 'lon' in msg and 'device' in msg:
                 fix = {'speed': 0}
                 for key in ['track', 'speed', 'lat', 'lon', 'device', 'climb']:
                     if key in msg:

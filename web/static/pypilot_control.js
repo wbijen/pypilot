@@ -46,6 +46,8 @@ $(document).ready(function() {
     $('#power_consumption').text("N/A");
     $('#runtime').text("N/A");
     $('#center_button').hide();
+    $('#record_state').text('idle');
+    $('#record_session').text('-');
 
     // Connect to the Socket.IO server.
     var port = location.port;
@@ -128,6 +130,9 @@ $(document).ready(function() {
         pypilot_watch('ap.enabled');
         pypilot_watch('ap.mode');
         pypilot_watch('ap.modes');
+        pypilot_watch('ap.record.mode');
+        pypilot_watch('ap.record.state');
+        pypilot_watch('ap.record.session_id');
         pypilot_watch('ap.tack.timeout', .25);
         pypilot_watch('ap.tack.state');
         pypilot_watch('ap.tack.direction');
@@ -439,6 +444,25 @@ $(document).ready(function() {
             }
         }
 
+        if('ap.record.mode' in data) {
+            var record_mode = data['ap.record.mode'];
+            if(record_mode == 'record') {
+                $('#tb_record').addClass('toggle-button-selected');
+                $('#record_toggle').text(_('Stop Recording'));
+            } else {
+                $('#tb_record').removeClass('toggle-button-selected');
+                $('#record_toggle').text(_('Start Recording'));
+            }
+        }
+
+        if('ap.record.state' in data)
+            $('#record_state').text(data['ap.record.state']);
+
+        if('ap.record.session_id' in data) {
+            var session_id = data['ap.record.session_id'];
+            $('#record_session').text(session_id ? session_id : '-');
+        }
+
         if('ap.heading_command' in data) {
             heading_command = data['ap.heading_command'];
             $('#heading_command').text(heading_str(heading_command));
@@ -614,13 +638,22 @@ $(document).ready(function() {
     }
 
     // Control
-    $('.toggle-button').click(function(event) {
+    $('#tb_engaged').click(function(event) {
         if($(this).hasClass('toggle-button-selected')) {
             pypilot_set('ap.enabled', false);
         } else {
             pypilot_set('ap.heading_command', heading);
             pypilot_set('ap.enabled', true);
         }
+    });
+
+    $('#tb_record').click(function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if($(this).hasClass('toggle-button-selected'))
+            pypilot_set('ap.record.mode', 'off');
+        else
+            pypilot_set('ap.record.mode', 'record');
     });
 
     $('#center_button').click(function(event) {
@@ -807,7 +840,7 @@ $(document).ready(function() {
     // should be called if tab changes
     setup_watches = function() {
         var tab = currentTab;
-        pypilot_watches(['ap.heading', 'rudder.source'], tab == 'Control', 0.5);
+        pypilot_watches(['ap.heading', 'rudder.source', 'ap.record.mode', 'ap.record.state', 'ap.record.session_id'], tab == 'Control', 0.5);
         pypilot_watches(gains, tab == 'Gain', 1);
         pypilot_watches(['imu.heading', 'imu.pitch', 'imu.roll', 'rudder.angle'], tab == 'Calibration', .5);
         pypilot_watches(conf_names, tab == 'Configuration', 1);
