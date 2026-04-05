@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "WebSearch",
+      "WebFetch(domain:learn.adafruit.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.circuitpython.org)",
+      "WebFetch(domain:www.ceva-ip.com)",
+      "WebFetch(domain:docs.sparkfun.com)",
+      "WebFetch(domain:forums.adafruit.com)",
+      "WebFetch(domain:circuitpython.86x.net)",
+      "WebFetch(domain:forum.arduino.cc)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:www.mouser.com)",
+      "WebFetch(domain:cdn.sparkfun.com)",
+      "WebFetch(domain:forums.raspberrypi.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.luxonis.com)",
+      "WebFetch(domain:discuss.luxonis.com)",
+      "WebFetch(domain:xdevs.com)",
+      "Bash(python tests/test_bno_coordinate_math.py)",
+      "Bash(python tests/test_bno_driver.py)",
+      "Bash(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 pi@openplotter \"echo ''Connected!'' && hostname && uname -a\")",
+      "Bash(where sshpass:*)",
+      "Bash(python -c \":*)",
+      "Bash(ssh pi@openplotter 'cat /boot/firmware/config.txt')",
+      "Bash(py -3 -c \":*)",
+      "Bash(sshpass -p raspberry ssh -o StrictHostKeyChecking=no pi@openplotter 'cd ~/pypilot && git fetch origin && git reset --hard origin/bno && sudo python3 setup.py install --quiet && sudo systemctl restart pypilot && echo \"\"DONE\"\"')",
+      "Bash(pip install:*)",
+      "Bash(apt-get install:*)",
+      "Bash(python pi_ssh.py)",
+      "Bash(python pi_ssh.py \"sudo journalctl -u pypilot --since ''20:22:00'' --no-pager 2>/dev/null || sudo journalctl -u pypilot -n 60 --no-pager\")"
+    ]
+  }
+}

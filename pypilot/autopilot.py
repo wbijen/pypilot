@@ -156,6 +156,8 @@ class Autopilot(object):
             ['off', 'observe', 'jetson_ai', 'jetson_ai_gps'],
             persistent=True)
         self.jetson_state = self.register(Property, 'jetson.state', 'inactive')
+        self.jetson_model = self.register(Property, 'jetson.model', '')
+        self.jetson_models = self.register(Property, 'jetson.models', '')
         self.jetson_confidence = self.register(Property, 'jetson.confidence', 0.0)
         self.jetson_reason = self.register(Property, 'jetson.reason', '')
         self.jetson_heading_offset = self.register(Property, 'jetson.heading_offset', 0.0)
