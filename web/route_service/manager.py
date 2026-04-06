@@ -317,12 +317,13 @@ class RouteNavigationManager:
             return None
         if not route.get("waypoints"):
             raise ValueError("Route must contain at least one waypoint.")
+        start_index = self._find_nearest_waypoint_index(route)
         with self._lock:
             self._active.update(
                 {
                     "routeId": route_id,
                     "state": "ready",
-                    "waypointIndex": 0,
+                    "waypointIndex": start_index,
                     "message": "Route activated. Waiting for GPS fix.",
                     "updatedAt": utc_now_iso(),
                 }
@@ -330,6 +331,35 @@ class RouteNavigationManager:
             self._save_state()
         self._set_nav_mode()
         return self.active_status()
+
+    def _find_nearest_waypoint_index(self, route: dict[str, Any]) -> int:
+        """Find the first waypoint the boat has not yet passed.
+
+        Walks the route sequentially and checks each leg with a
+        perpendicular test.  Returns the index of the first waypoint
+        whose leg the boat is still approaching or on.
+        Falls back to index 0 when GPS is unavailable.
+        """
+        position = self._get_position()
+        if not position:
+            return 0
+        waypoints = route.get("waypoints", [])
+        if len(waypoints) < 2:
+            return 0
+        # Walk each leg: if the boat is past the perpendicular of
+        # waypoint[i] toward waypoint[i+1], it has passed WP[i].
+        for i in range(len(waypoints) - 1):
+            wp = waypoints[i]
+            next_wp = waypoints[i + 1]
+            leg_start = (float(wp["lat"]), float(wp["lon"]))
+            leg_end = (float(next_wp["lat"]), float(next_wp["lon"]))
+            _, along, leg_len = leg_metrics_m(leg_start, leg_end, position)
+            if leg_len > 0 and along < leg_len:
+                # Boat has NOT yet passed the end of this leg,
+                # so it should navigate toward waypoint[i+1].
+                return i + 1
+        # Boat is past all legs — target the last waypoint
+        return len(waypoints) - 1
 
     def stop_active_route(self) -> dict[str, Any]:
         with self._lock:
@@ -491,6 +521,14 @@ class RouteNavigationManager:
                     self._active["message"] = f"Advanced past {waypoint['name']}."
                     self._save_state()
                 if waypoint_index >= len(waypoints):
+                    if route.get("isLoop") and len(route.get("waypoints", [])) > 1:
+                        waypoint_index = 0
+                        with self._lock:
+                            self._active["waypointIndex"] = 0
+                            self._active["message"] = "Loop restarted."
+                            self._active["updatedAt"] = utc_now_iso()
+                            self._save_state()
+                        continue
                     with self._lock:
                         self._complete_route()
                     return

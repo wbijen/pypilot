@@ -2,7 +2,7 @@
 # Deploy current branch (default: bno) to the running pypilot service.
 # Usage:  ./reinstall.sh [branch]
 
-BRANCH="${1:-bno}"
+BRANCH="${1:-master}"
 
 git fetch
 
