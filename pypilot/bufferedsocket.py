@@ -236,9 +236,17 @@ class BufferedSocketBase(object):
 
             if t1-t0 > .1:
                 print(_('socket send took too long!?!?'), self.address, t1-t0, self.out_buffer_size)
-            if count <= 0:
+            if count < 0:
                 print(_('socket send error'), self.address, count)
                 self.close()
+                return
+            if count == 0:
+                self.sendfail_cnt += 1
+                if self.sendfail_cnt >= self.sendfail_msg:
+                    print(_('pypilot socket failed to send to'), self.address, self.sendfail_cnt)
+                    self.sendfail_msg *= 10
+                if self.sendfail_cnt > 100:
+                    self.close()
                 return
 
             self.sendfail_cnt = 0

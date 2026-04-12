@@ -11,7 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / 'pypilot'))
 
-builtins.__dict__.setdefault('_', lambda value: value)
+builtins._ = lambda value: value
 
 import bufferedsocket
 
@@ -173,7 +173,7 @@ class BufferedSocketTests(unittest.TestCase):
     def test_server_style_updates_coalesce_over_real_socketpair(self):
         sys.modules.setdefault('zeroconf_service', types.SimpleNamespace(zeroconf=None))
         sys.modules.setdefault('nonblockingpipe', types.SimpleNamespace(NonBlockingPipe=lambda *args, **kwargs: (None, None)))
-        server = importlib.import_module('pypilot.server')
+        server = importlib.import_module('server')
 
         left, right = socket.socketpair()
         try:
