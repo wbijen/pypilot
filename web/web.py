@@ -6,7 +6,7 @@
 # License as published by the Free Software Foundation; either
 # version 3 of the License, or (at your option) any later version.  
 
-import sys, os, json
+import sys, os, json, time
 from pathlib import Path
 from flask import Flask, render_template, session, request, Markup, jsonify, send_file
 
@@ -43,7 +43,10 @@ def write_config():
         print('failed to write config')
 
 if len(sys.argv) > 1:
-    pypilot_web_port=int(sys.argv[1])
+    try:
+        pypilot_web_port = int(sys.argv[1])
+    except ValueError:
+        pypilot_web_port = config['port']
 else:
     pypilot_web_port = config['port']
 
@@ -54,6 +57,7 @@ print('using port', pypilot_web_port)
 # different async modes, or leave it set to None for the application to choose
 # the best option based on installed packages.
 async_mode = None
+PYPILOT_API_POLL_INTERVAL = .1
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -329,6 +333,114 @@ def telemetry_session_artifact(session_id, artifact_key):
     if not candidate:
         return jsonify({'ok': False, 'message': 'Unknown telemetry artifact: ' + artifact_key}), 404
     return send_file(str(candidate), as_attachment=True, download_name=candidate.name)
+
+
+def _create_pypilot_client():
+    factory = app.config.get('PYPILOT_CLIENT_FACTORY', pypilotClient)
+    return factory()
+
+
+def _normalize_requested_pypilot_values(names):
+    if names is None:
+        return [], False
+    if isinstance(names, str):
+        names = [names]
+    if not isinstance(names, list):
+        return False, 'Expected "get" to be a string or list of strings.'
+
+    requested = []
+    for name in names:
+        if not isinstance(name, str) or not name:
+            return False, 'Requested pypilot values must be non-empty strings.'
+        if name not in requested:
+            requested.append(name)
+    return requested, False
+
+
+def _normalize_pypilot_set_values(values):
+    if values is None:
+        return {}, False
+    if not isinstance(values, dict):
+        return False, 'Expected "set" to be an object of pypilot values.'
+
+    normalized = {}
+    for name, value in values.items():
+        if not isinstance(name, str) or not name:
+            return False, 'Pypilot value names must be non-empty strings.'
+        normalized[name] = value
+    return normalized, False
+
+
+def _connect_pypilot_client(client, timeout=2.0):
+    if client.connection:
+        return True
+
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        client.poll(max(0, min(PYPILOT_API_POLL_INTERVAL, end - time.monotonic())))
+        if client.connection:
+            return True
+    return bool(client.connection)
+
+
+def _send_pypilot_value(client, name, value):
+    client.send(name + '=' + pyjson.dumps(value) + '\n')
+
+
+def _request_pypilot_values(client, requested, timeout=2.0):
+    if not requested:
+        return {}, []
+
+    requested_set = set(requested)
+    for name in requested:
+        client.watch(name)
+
+    values = {}
+    end = time.monotonic() + timeout
+    while len(values) < len(requested) and time.monotonic() < end:
+        client.poll(max(0, min(PYPILOT_API_POLL_INTERVAL, end - time.monotonic())))
+        for name, value in client.receive().items():
+            if name in requested_set:
+                values[name] = value
+
+    missing = [name for name in requested if name not in values]
+    return values, missing
+
+
+@app.route('/api/pypilot', methods=['POST'])
+def pypilot_api():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'ok': False, 'message': 'Expected a JSON object request body.'}), 400
+
+    set_values, error = _normalize_pypilot_set_values(payload.get('set'))
+    if error:
+        return jsonify({'ok': False, 'message': error}), 400
+
+    requested, error = _normalize_requested_pypilot_values(payload.get('get'))
+    if error:
+        return jsonify({'ok': False, 'message': error}), 400
+
+    if not set_values and not requested:
+        return jsonify({'ok': False, 'message': 'Provide "set" and/or "get" in the request body.'}), 400
+
+    client = _create_pypilot_client()
+    try:
+        if not _connect_pypilot_client(client):
+            return jsonify({'ok': False, 'message': 'Unable to connect to pypilot.'}), 503
+
+        for name, value in set_values.items():
+            _send_pypilot_value(client, name, value)
+
+        values, missing = _request_pypilot_values(client, requested)
+    finally:
+        client.disconnect()
+
+    response = {'ok': not missing, 'values': values}
+    if missing:
+        response['missing'] = missing
+        response['message'] = 'Timed out waiting for requested pypilot values: ' + ', '.join(missing)
+    return jsonify(response)
 
 translations = []
 static = False
