@@ -44,7 +44,7 @@ def write_config():
 
 if len(sys.argv) > 1:
     try:
-        pypilot_web_port=int(sys.argv[1])
+        pypilot_web_port = int(sys.argv[1])
     except ValueError:
         pypilot_web_port = config['port']
 else:
@@ -414,11 +414,9 @@ def pypilot_api():
 
     try:
         set_values = _normalize_pypilot_set_values(payload.get('set'))
-        requested = _normalize_requested_pypilot_values(
-            payload['get'] if 'get' in payload else payload.get('request')
-        )
-    except ValueError as e:
-        return jsonify({'ok': False, 'message': str(e)}), 400
+        requested = _normalize_requested_pypilot_values(payload.get('get'))
+    except ValueError:
+        return jsonify({'ok': False, 'message': 'Invalid pypilot API request.'}), 400
 
     if not set_values and not requested:
         return jsonify({'ok': False, 'message': 'Provide "set" and/or "get" in the request body.'}), 400
@@ -439,7 +437,7 @@ def pypilot_api():
     if missing:
         response['missing'] = missing
         response['message'] = 'Timed out waiting for requested pypilot values.'
-    return jsonify(response), 200 if not missing else 504
+    return jsonify(response)
 
 translations = []
 static = False
