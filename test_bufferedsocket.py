@@ -15,6 +15,10 @@ builtins._ = lambda value: value
 
 import bufferedsocket
 
+BACKPRESSURE_VALUE_SIZE = 180
+MAX_DRAIN_RETRIES = 20
+DRAIN_RETRY_INTERVAL_SECONDS = 0.01
+
 
 class FakePoll(object):
     def __init__(self, ready=None):
@@ -112,7 +116,7 @@ class BufferedSocketTests(unittest.TestCase):
 
     def test_backpressure_drops_old_replaceable_messages(self):
         buffered, fake_socket = self.make_socket()
-        large_quoted_value = '"' + ('x' * 180) + '"\n'
+        large_quoted_value = '"' + ('x' * BACKPRESSURE_VALUE_SIZE) + '"\n'
         for index in range(400):
             buffered.write('value%d=%s' % (index, large_quoted_value))
 
@@ -148,11 +152,11 @@ class BufferedSocketTests(unittest.TestCase):
         self.assertEqual(b''.join(fake_socket.sent), b'heading=2\n')
 
     def drain_live_socket(self, buffered):
-        for _ in range(20):
+        for _ in range(MAX_DRAIN_RETRIES):
             buffered.flush()
             if not buffered.out_queue and not buffered.out_partial:
                 return
-            time.sleep(0.01)
+            time.sleep(DRAIN_RETRY_INTERVAL_SECONDS)
         self.fail('buffer did not drain')
 
     def test_real_socketpair_preserves_latest_update_and_control_message(self):
