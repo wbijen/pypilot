@@ -1,6 +1,8 @@
 import builtins
 import importlib
+import socket
 import sys
+import time
 import types
 import unittest
 from pathlib import Path
@@ -144,6 +146,49 @@ class BufferedSocketTests(unittest.TestCase):
 
         buffered.flush()
         self.assertEqual(b''.join(fake_socket.sent), b'heading=2\n')
+
+    def drain_live_socket(self, buffered):
+        for _ in range(20):
+            buffered.flush()
+            if not buffered.out_queue and not buffered.out_partial:
+                return
+            time.sleep(0.01)
+        self.fail('buffer did not drain')
+
+    def test_real_socketpair_preserves_latest_update_and_control_message(self):
+        left, right = socket.socketpair()
+        try:
+            buffered = bufferedsocket.LineBufferedNonBlockingSocket(left, ('local', 0))
+            buffered.write('heading=1\n')
+            buffered.write('heading=2\n')
+            buffered.write('watch={"heading": 1}\n')
+
+            self.drain_live_socket(buffered)
+            right.settimeout(1)
+            self.assertEqual(right.recv(4096).decode(), 'heading=2\nwatch={"heading": 1}\n')
+        finally:
+            left.close()
+            right.close()
+
+    def test_server_style_updates_coalesce_over_real_socketpair(self):
+        sys.modules.setdefault('zeroconf_service', types.SimpleNamespace(zeroconf=None))
+        sys.modules.setdefault('nonblockingpipe', types.SimpleNamespace(NonBlockingPipe=lambda *args, **kwargs: (None, None)))
+        server = importlib.import_module('pypilot.server')
+
+        left, right = socket.socketpair()
+        try:
+            buffered = bufferedsocket.LineBufferedNonBlockingSocket(left, ('local', 0))
+            value = server.pypilotValue(object(), 'heading', info={'writable': True},
+                                        connection=buffered, msg='heading=0\n')
+            value.set('heading=10\n', False)
+            value.set('heading=11\n', False)
+
+            self.drain_live_socket(buffered)
+            right.settimeout(1)
+            self.assertEqual(right.recv(4096).decode(), 'heading=11\n')
+        finally:
+            left.close()
+            right.close()
 
 
 if __name__ == '__main__':
