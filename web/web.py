@@ -438,7 +438,7 @@ def pypilot_api():
     response = {'ok': not missing, 'values': values}
     if missing:
         response['missing'] = missing
-        response['message'] = 'Timed out waiting for requested pypilot values: ' + ', '.join(missing) + '.'
+        response['message'] = 'Timed out waiting for requested pypilot values: ' + ', '.join(missing)
     return jsonify(response)
 
 translations = []
