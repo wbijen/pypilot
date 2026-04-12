@@ -112,9 +112,9 @@ class BufferedSocketTests(unittest.TestCase):
 
     def test_backpressure_drops_old_replaceable_messages(self):
         buffered, fake_socket = self.make_socket()
-        payload = '"' + ('x' * 180) + '"\n'
+        large_value_json = '"' + ('x' * 180) + '"\n'
         for index in range(400):
-            buffered.write('value%d=%s' % (index, payload))
+            buffered.write('value%d=%s' % (index, large_value_json))
 
         self.assertFalse(fake_socket.closed)
         self.assertLess(buffered.out_buffer_messages, 400)

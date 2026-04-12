@@ -20,10 +20,10 @@ CONTROL_MESSAGES = {'error', 'watch', 'values', 'udp_port', 'profiles', 'profile
 
 
 class BufferedMessage(object):
-    def __init__(self, text, key=False):
+    def __init__(self, text, message_key=None):
         self.text = text
         self.data = text.encode()
-        self.key = key
+        self.message_key = message_key
         self.offset = 0
 
     def remaining(self):
@@ -95,14 +95,14 @@ class BufferedSocketBase(object):
         entry = self.out_queue.pop(index)
         self.out_buffer_size -= entry.remaining()
         self.out_buffer_messages -= 1
-        if entry.key and self.replaceable_messages.get(entry.key) is entry:
-            del self.replaceable_messages[entry.key]
+        if entry.message_key and self.replaceable_messages.get(entry.message_key) is entry:
+            del self.replaceable_messages[entry.message_key]
         return entry
 
     def _queue_message(self, text):
-        key = self._message_key(text)
-        if key:
-            previous = self.replaceable_messages.get(key)
+        message_key = self._message_key(text)
+        if message_key:
+            previous = self.replaceable_messages.get(message_key)
             if previous and not previous.offset:
                 previous_remaining = previous.remaining()
                 previous.text = text
@@ -111,12 +111,12 @@ class BufferedSocketBase(object):
                 self._update_out_buffer()
                 return
 
-        entry = BufferedMessage(text, key)
+        entry = BufferedMessage(text, message_key)
         self.out_queue.append(entry)
         self.out_buffer_size += entry.remaining()
         self.out_buffer_messages += 1
-        if key:
-            self.replaceable_messages[key] = entry
+        if message_key:
+            self.replaceable_messages[message_key] = entry
 
     def _drop_replaceable_messages(self):
         dropped = 0
@@ -126,7 +126,7 @@ class BufferedSocketBase(object):
             if self.out_buffer_size <= TCP_BUFFER_WARN and self.out_buffer_messages <= TCP_MESSAGE_WARN:
                 break
             entry = self.out_queue[index]
-            if entry.offset or not entry.key:
+            if entry.offset or not entry.message_key:
                 index += 1
                 continue
             dropped += 1
@@ -160,6 +160,14 @@ class BufferedSocketBase(object):
             self._update_out_buffer()
             self.close()
 
+    def _handle_send_failure(self):
+        self.sendfail_cnt += 1
+        if self.sendfail_cnt >= self.sendfail_msg:
+            print(_('pypilot socket failed to send to'), self.address, self.sendfail_cnt)
+            self.sendfail_msg *= 10
+        if self.sendfail_cnt > 100:
+            self.close()
+
     def _queue_tcp(self, data):
         if self.out_partial:
             data = self.out_partial + data
@@ -174,11 +182,7 @@ class BufferedSocketBase(object):
             start = end + 1
 
         if start < len(data):
-            tail = data[start:]
-            if start == 0:
-                self._queue_message(tail)
-            else:
-                self.out_partial = tail
+            self.out_partial = data[start:]
 
         self._check_queue_limits()
         self._update_out_buffer()
@@ -221,12 +225,8 @@ class BufferedSocketBase(object):
 
         try:
             if not self.pollout.poll(0):
-                if self.sendfail_cnt >= self.sendfail_msg:
-                    print(_('pypilot socket failed to send to'), self.address, self.sendfail_cnt)
-                    self.sendfail_msg *= 10
-                self.sendfail_cnt += 1
-                if self.sendfail_cnt > 100:
-                    self.close()
+                self._handle_send_failure()
+                if not self.socket:
                     return
 
             entry = self.out_queue[0]
@@ -241,12 +241,7 @@ class BufferedSocketBase(object):
                 self.close()
                 return
             if count == 0:
-                self.sendfail_cnt += 1
-                if self.sendfail_cnt >= self.sendfail_msg:
-                    print(_('pypilot socket failed to send to'), self.address, self.sendfail_cnt)
-                    self.sendfail_msg *= 10
-                if self.sendfail_cnt > 100:
-                    self.close()
+                self._handle_send_failure()
                 return
 
             self.sendfail_cnt = 0
