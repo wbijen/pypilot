@@ -341,33 +341,33 @@ def _create_pypilot_client():
 
 def _normalize_requested_pypilot_values(names):
     if names is None:
-        return []
+        return [], False
     if isinstance(names, str):
         names = [names]
     if not isinstance(names, list):
-        raise ValueError('Expected "get" to be a string or list of strings.')
+        return False, 'Expected "get" to be a string or list of strings.'
 
     requested = []
     for name in names:
         if not isinstance(name, str) or not name:
-            raise ValueError('Requested pypilot values must be non-empty strings.')
+            return False, 'Requested pypilot values must be non-empty strings.'
         if name not in requested:
             requested.append(name)
-    return requested
+    return requested, False
 
 
 def _normalize_pypilot_set_values(values):
     if values is None:
-        return {}
+        return {}, False
     if not isinstance(values, dict):
-        raise ValueError('Expected "set" to be an object of pypilot values.')
+        return False, 'Expected "set" to be an object of pypilot values.'
 
     normalized = {}
     for name, value in values.items():
         if not isinstance(name, str) or not name:
-            raise ValueError('Pypilot value names must be non-empty strings.')
+            return False, 'Pypilot value names must be non-empty strings.'
         normalized[name] = value
-    return normalized
+    return normalized, False
 
 
 def _connect_pypilot_client(client, timeout=2.0):
@@ -412,11 +412,13 @@ def pypilot_api():
     if not isinstance(payload, dict):
         return jsonify({'ok': False, 'message': 'Expected a JSON object request body.'}), 400
 
-    try:
-        set_values = _normalize_pypilot_set_values(payload.get('set'))
-        requested = _normalize_requested_pypilot_values(payload.get('get'))
-    except ValueError:
-        return jsonify({'ok': False, 'message': 'Invalid pypilot API request.'}), 400
+    set_values, error = _normalize_pypilot_set_values(payload.get('set'))
+    if error:
+        return jsonify({'ok': False, 'message': error}), 400
+
+    requested, error = _normalize_requested_pypilot_values(payload.get('get'))
+    if error:
+        return jsonify({'ok': False, 'message': error}), 400
 
     if not set_values and not requested:
         return jsonify({'ok': False, 'message': 'Provide "set" and/or "get" in the request body.'}), 400
@@ -436,7 +438,7 @@ def pypilot_api():
     response = {'ok': not missing, 'values': values}
     if missing:
         response['missing'] = missing
-        response['message'] = 'Timed out waiting for requested pypilot values.'
+        response['message'] = 'Timed out waiting for requested pypilot values: ' + ', '.join(missing) + '.'
     return jsonify(response)
 
 translations = []
