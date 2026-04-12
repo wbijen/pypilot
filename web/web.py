@@ -57,6 +57,7 @@ print('using port', pypilot_web_port)
 # different async modes, or leave it set to None for the application to choose
 # the best option based on installed packages.
 async_mode = None
+PYPILOT_API_POLL_INTERVAL = .1
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -376,7 +377,7 @@ def _connect_pypilot_client(client, timeout=2.0):
 
     end = time.monotonic() + timeout
     while time.monotonic() < end:
-        client.poll(max(0, min(.1, end - time.monotonic())))
+        client.poll(max(0, min(PYPILOT_API_POLL_INTERVAL, end - time.monotonic())))
         if client.connection:
             return True
     return bool(client.connection)
@@ -397,7 +398,7 @@ def _request_pypilot_values(client, requested, timeout=2.0):
     values = {}
     end = time.monotonic() + timeout
     while len(values) < len(requested) and time.monotonic() < end:
-        client.poll(max(0, min(.1, end - time.monotonic())))
+        client.poll(max(0, min(PYPILOT_API_POLL_INTERVAL, end - time.monotonic())))
         for name, value in client.receive().items():
             if name in requested_set:
                 values[name] = value
