@@ -241,7 +241,6 @@ class BufferedSocketBase(object):
                 self.close()
                 return
             if count == 0:
-                self._handle_send_failure()
                 return
 
             self.sendfail_cnt = 0
