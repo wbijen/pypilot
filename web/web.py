@@ -43,7 +43,10 @@ def write_config():
         print('failed to write config')
 
 if len(sys.argv) > 1:
-    pypilot_web_port=int(sys.argv[1])
+    try:
+        pypilot_web_port=int(sys.argv[1])
+    except ValueError:
+        pypilot_web_port = config['port']
 else:
     pypilot_web_port = config['port']
 
