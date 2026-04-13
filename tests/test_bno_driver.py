@@ -35,21 +35,33 @@ def _make_hw_with_data(accel_ms2, gyro_rads, mag_ut, bno_ijkr):
     """
     Return a BNO08xHardware instance whose bno property is mocked
     to return the given sensor values.
+
+    Matches the driver's current cached-read API: _process_available_packets()
+    is a no-op, and values are pulled from bno._readings keyed by the
+    BNO_REPORT_* constants.  Direct property access (bno.acceleration etc.)
+    is no longer used by the driver because it corrupted the SHTP sequence
+    state across calls.
     """
     hw = BNO08xHardware.__new__(BNO08xHardware)
-    hw.i2c_address = 0x4A
-    hw._spi        = None
-    hw.rate        = 10
+    hw.i2c_address    = 0x4A
+    hw._use_spi       = False
+    hw._cs_pin_num    = 8
+    hw._rst_pin_num   = None
+    hw._int_pin_num   = None
+    hw._int_io        = None      # gated by _data_ready()
     hw._last_accel = None
     hw._last_gyro  = None
     hw._last_mag   = None
     hw._last_quat  = None
 
     mock_bno = MagicMock()
-    mock_bno.acceleration      = accel_ms2
-    mock_bno.gyro              = gyro_rads
-    mock_bno.magnetic          = mag_ut
-    mock_bno.quaternion        = bno_ijkr
+    mock_bno._readings = {
+        _fake_bno_mod.BNO_REPORT_ACCELEROMETER:   accel_ms2,
+        _fake_bno_mod.BNO_REPORT_GYROSCOPE:       gyro_rads,
+        _fake_bno_mod.BNO_REPORT_MAGNETOMETER:    mag_ut,
+        _fake_bno_mod.BNO_REPORT_ROTATION_VECTOR: bno_ijkr,
+    }
+    mock_bno._process_available_packets = MagicMock(return_value=None)
     mock_bno.calibration_status = 2
     hw.bno = mock_bno
     return hw
@@ -117,9 +129,12 @@ class TestUnitConversions(unittest.TestCase):
     def test_returns_false_when_no_bno(self):
         hw = BNO08xHardware.__new__(BNO08xHardware)
         hw.bno = None
-        hw.i2c_address = 0x4A
-        hw._spi = None
-        hw.rate = 10
+        hw.i2c_address  = 0x4A
+        hw._use_spi     = False
+        hw._cs_pin_num  = 8
+        hw._rst_pin_num = None
+        hw._int_pin_num = None
+        hw._int_io      = None
         hw._last_accel = None
         hw._last_gyro  = None
         hw._last_mag   = None
