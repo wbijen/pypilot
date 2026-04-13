@@ -36,6 +36,7 @@ from boatimu import (
 )
 
 from bno08x_driver import BNO08xHardware
+from mmc5983_driver import MMC5983Hardware
 
 
 class BNOBoatIMU:
@@ -47,7 +48,8 @@ class BNOBoatIMU:
     work identically to BoatIMU so the existing UI tools all work.
     """
 
-    def __init__(self, client, i2c_address=0x4B, use_spi=False, cs_pin=8):
+    def __init__(self, client, i2c_address=0x4B, use_spi=False, cs_pin=8,
+                 mmc_i2c_address=0x30):
         self.client = client
 
         # ---- register same imu.* properties as BoatIMU ----
@@ -77,12 +79,15 @@ class BNOBoatIMU:
         self.headingraterate_lowpass_constant = self.register(
             RangeProperty, 'headingraterate_lowpass_constant', .1, .05, .3)
 
-        # sensor value names (identical to BoatIMU)
+        # sensor value names (identical to BoatIMU + diagnostic compass channels)
         scalar_names = [
             'accel', 'gyro', 'compass', 'accel.residuals',
             'pitch', 'roll', 'pitchrate', 'rollrate',
             'headingrate', 'headingraterate', 'heel',
             'headingrate_lowpass', 'headingraterate_lowpass',
+            # both raw mag streams are always broadcast for cross-check;
+            # imu.compass mirrors whichever source compass.source selects
+            'compass_bno086', 'compass_mmc5983',
         ]
         directional_names = ['heading', 'heading_lowpass']
 
@@ -102,6 +107,17 @@ class BNOBoatIMU:
         # ---- hardware + calibration process ----
         self.hw = BNO08xHardware(i2c_address=i2c_address,
                                   use_spi=use_spi, cs_pin=cs_pin)
+
+        # External MMC5983MA magnetometer — optional, used as the primary
+        # compass source for FitPointsCompass when present.  The BNO086's
+        # on-chip mag is also kept for diagnostics (imu.compass_bno086).
+        self.mmc = MMC5983Hardware(i2c_address=mmc_i2c_address)
+        self.mmc_available = self.mmc.is_available()
+        default_compass_source = 'mmc5983' if self.mmc_available else 'bno086'
+        self.compass_source = self.register(
+            EnumProperty, 'compass.source', default_compass_source,
+            ['mmc5983', 'bno086'], persistent=True)
+
         self.auto_cal = AutomaticCalibrationProcess(client.server)
         # autopilot.py iterates childprocesses looking for .process to kill;
         # BNO086 runs in-thread so there is no subprocess to manage.
@@ -156,6 +172,20 @@ class BNOBoatIMU:
 
         self.last_imuread = time.monotonic()
         self.frequency.strobe()
+
+        # ---- compass source selection ----
+        # Always preserve the BNO086's internal mag for diagnostics
+        data['compass_bno086'] = data['compass']
+
+        # Read MMC5983MA if available; broadcast even when not selected
+        mmc_compass = self.mmc.read() if self.mmc_available else None
+        if mmc_compass:
+            data['compass_mmc5983'] = mmc_compass
+
+        # imu.compass mirrors whichever source compass.source selects
+        # (graceful fallback to BNO086 if MMC requested but unavailable)
+        if self.compass_source.value == 'mmc5983' and mmc_compass:
+            data['compass'] = mmc_compass
 
         # ---- alignment calibration ----
         aligned = quaternion.multiply(data['fusionQPose'], self.alignmentQ.value)
